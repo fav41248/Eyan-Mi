@@ -1,0 +1,59 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Registered user profile on Eyan mi celebration platform.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique user identifier" },
+        "email": { "type": "string", "description": "User email address" },
+        "displayName": { "type": "string", "description": "User full name or display handle" },
+        "photoURL": { "type": "string", "description": "User avatar image URL" },
+        "role": { "type": "string", "description": "User role: user or admin" },
+        "celebrationsCount": { "type": "number", "description": "Count of created celebrations" },
+        "createdAt": { "type": "string", "description": "Account registration ISO timestamp" },
+        "lastLoginAt": { "type": "string", "description": "Last login ISO timestamp" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Celebration": {
+      "title": "Celebration",
+      "description": "A personalized celebration page with custom handwritten/AI letters, voice recordings, soundscapes, and photos.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique slug or identifier for the celebrant link" },
+        "userId": { "type": "string", "description": "UID of the user who created this celebration" },
+        "userEmail": { "type": "string", "description": "Email of the creator" },
+        "recipientName": { "type": "string", "description": "Full name of the celebrant" },
+        "nickname": { "type": "string", "description": "Affectionate nickname" },
+        "occasion": { "type": "string", "description": "Occasion: birthday, anniversary, appreciation, love, just-because" },
+        "letterType": { "type": "string", "description": "Delivery type: typed, voice, or both" },
+        "epistleText": { "type": "string", "description": "Handwritten or AI generated celebration letter" },
+        "voiceAudioUrl": { "type": "string", "description": "Recorded voice reading audio URL or base64" },
+        "voiceDuration": { "type": "number", "description": "Duration of voice recording in seconds" },
+        "soundtrackPreset": { "type": "string", "description": "Selected ambient soundscape preset" },
+        "customAudioUrl": { "type": "string", "description": "Optional custom music track URL" },
+        "openingTitle": { "type": "string", "description": "Title displayed on initial load" },
+        "openingSubtitle": { "type": "string", "description": "Subtitle message" },
+        "finaleTitle": { "type": "string", "description": "Closing headline" },
+        "finaleExactMessage": { "type": "string", "description": "Finale celebration burst message" },
+        "loaderPhotos": { "type": "array", "description": "Photos cycling in opening sequence" },
+        "photos": { "type": "array", "description": "Photos in polaroid scrapbook gallery" },
+        "viewsCount": { "type": "number", "description": "Number of times the celebration was opened" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "description": "Update timestamp" }
+      },
+      "required": ["id", "recipientName"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and account statistics"
+    },
+    "/celebrations/{celebrantId}": {
+      "schema": "Celebration",
+      "description": "Publicly viewable celebration page and user-managed celebrations"
+    }
+  }
+}

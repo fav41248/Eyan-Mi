@@ -1,0 +1,8 @@
+{
+  "name": "For Oluwapreciousimi ❤️ - Birthday Celebration",
+  "description": "A luxury digital scrapbook and interactive birthday epistle celebrating Oluwapreciousimi .",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
