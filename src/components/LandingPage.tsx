@@ -37,13 +37,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-[#241318] flex flex-col font-sans selection:bg-[#FCE8EB] selection:text-[#8B1E3F]">
       {/* Top Luxury Navbar */}
-      <header className="bg-white/90 backdrop-blur-md border-b border-[#EADBDA] px-4 sm:px-8 py-4 sticky top-0 z-40 flex items-center justify-between shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#8B1E3F] via-[#A62B50] to-[#D4AF37] flex items-center justify-center text-white shadow-sm">
-            <Heart className="w-5 h-5 fill-white" />
+      {/* Top Luxury Navbar */}
+      <header className="bg-white/90 backdrop-blur-md border-b border-[#EADBDA] px-3.5 sm:px-8 py-3 sm:py-4 sticky top-0 z-40 flex items-center justify-between shadow-xs">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-[#8B1E3F] via-[#A62B50] to-[#D4AF37] flex items-center justify-center text-white shadow-sm shrink-0">
+            <Heart className="w-4 h-4 sm:w-5 sm:h-5 fill-white" />
           </div>
           <div>
-            <span className="font-serif text-xl sm:text-2xl font-bold text-[#4A1525] tracking-tight">
+            <span className="font-serif text-lg sm:text-2xl font-bold text-[#4A1525] tracking-tight">
               Eyan mi
             </span>
             <span className="hidden sm:inline-block text-[11px] text-[#8C6B73] ml-2 font-medium">
@@ -68,15 +69,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </button>
         </nav>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-1.5 sm:gap-2.5">
           {isAdmin && onGoToAdmin && (
             <button
               type="button"
               onClick={onGoToAdmin}
-              className="px-3 py-2 rounded-xl bg-[#8B1E3F] text-white text-xs font-bold hover:bg-[#721532] transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
+              className="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-[#8B1E3F] text-white text-[11px] sm:text-xs font-bold hover:bg-[#721532] transition-all cursor-pointer shadow-xs flex items-center gap-1"
             >
               <Shield className="w-3.5 h-3.5" />
-              <span>Admin Panel</span>
+              <span className="hidden sm:inline">Admin Panel</span>
+              <span className="sm:hidden">Admin</span>
             </button>
           )}
 
@@ -84,16 +86,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <button
               type="button"
               onClick={onGoToDashboard}
-              className="px-4 py-2 rounded-xl bg-[#FFF0F2] border border-[#F5CDD3] text-[#8B1E3F] text-xs font-bold hover:bg-[#FCE6E9] transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
+              className="px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-[#FFF0F2] border border-[#F5CDD3] text-[#8B1E3F] text-[11px] sm:text-xs font-bold hover:bg-[#FCE6E9] transition-all cursor-pointer shadow-xs flex items-center gap-1"
             >
               <User className="w-3.5 h-3.5" />
-              <span>My Studio</span>
+              <span className="hidden sm:inline">My Studio</span>
+              <span className="sm:hidden">Studio</span>
             </button>
           ) : (
             <button
               type="button"
               onClick={onOpenAuth}
-              className="px-4 py-2 rounded-xl border border-[#EADBDA] bg-white text-[#4A1525] text-xs font-semibold hover:bg-[#FAF7F2] transition-colors cursor-pointer"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl border border-[#EADBDA] bg-white text-[#4A1525] text-[11px] sm:text-xs font-semibold hover:bg-[#FAF7F2] transition-colors cursor-pointer"
             >
               Sign In
             </button>
@@ -102,41 +105,42 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <button
             type="button"
             onClick={onStartCreating}
-            className="px-5 py-2 rounded-xl bg-[#8B1E3F] hover:bg-[#721532] text-white text-xs font-semibold shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+            className="px-3 sm:px-5 py-1.5 sm:py-2 rounded-xl bg-[#8B1E3F] hover:bg-[#721532] text-white text-[11px] sm:text-xs font-semibold shadow-sm hover:shadow-md transition-all flex items-center gap-1 sm:gap-1.5 cursor-pointer shrink-0"
           >
-            <Sparkles className="w-3.5 h-3.5 text-[#D4AF37]" />
-            <span>Create Celebration</span>
+            <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#D4AF37]" />
+            <span className="hidden sm:inline">Create Celebration</span>
+            <span className="sm:hidden">Create</span>
           </button>
         </div>
       </header>
 
       {/* HERO SECTION */}
-      <section className="relative pt-12 pb-20 sm:pt-20 sm:pb-32 px-4 sm:px-8 max-w-6xl mx-auto text-center overflow-hidden">
+      <section className="relative pt-8 pb-16 sm:pt-20 sm:pb-32 px-3.5 sm:px-8 max-w-6xl mx-auto text-center overflow-hidden">
         {/* Subtle Ambient Glow Background */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-gradient-to-tr from-[#FCE8EB]/60 via-[#F5E6D8]/50 to-[#FCE8EB]/60 rounded-full blur-3xl pointer-events-none -z-10" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[340px] sm:w-[600px] h-[300px] sm:h-[400px] bg-gradient-to-tr from-[#FCE8EB]/60 via-[#F5E6D8]/50 to-[#FCE8EB]/60 rounded-full blur-3xl pointer-events-none -z-10" />
 
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/95 border border-[#F2D7DC] text-xs font-semibold text-[#8B1E3F] shadow-sm mb-6 animate-fade-in">
-          <Sparkles className="w-3.5 h-3.5 text-[#D4AF37]" />
-          <span>The Luxury Digital Celebration Platform</span>
-          <Heart className="w-3.5 h-3.5 fill-[#8B1E3F]" />
+        <div className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1 sm:py-1.5 rounded-full bg-white/95 border border-[#F2D7DC] text-[11px] sm:text-xs font-semibold text-[#8B1E3F] shadow-sm mb-5 sm:mb-6 animate-fade-in max-w-[95vw] truncate">
+          <Sparkles className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+          <span className="truncate">The Luxury Digital Celebration Platform</span>
+          <Heart className="w-3.5 h-3.5 fill-[#8B1E3F] shrink-0" />
         </div>
 
-        <h1 className="font-serif text-4xl sm:text-6xl md:text-7xl font-bold text-[#4A1525] tracking-tight leading-[1.12] max-w-4xl mx-auto mb-6">
+        <h1 className="font-serif text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-[#4A1525] tracking-tight leading-[1.15] max-w-4xl mx-auto mb-4 sm:mb-6 break-words px-1">
           Celebrate your person. <br />
           <span className="italic font-normal text-[#8B1E3F]">
             Immortalize your love.
           </span>
         </h1>
 
-        <p className="text-base sm:text-xl text-[#6E4F57] max-w-2xl mx-auto font-light leading-relaxed mb-10">
+        <p className="text-sm sm:text-xl text-[#6E4F57] max-w-2xl mx-auto font-light leading-relaxed mb-8 sm:mb-10 px-2">
           Transform your heartfelt words, voice recording, memories, and photos into a stunning, interactive 3D wax-sealed celebration experience.
         </p>
 
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 mb-16">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-3.5 mb-12 sm:mb-16 px-2">
           <button
             type="button"
             onClick={onStartCreating}
-            className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-[#8B1E3F] hover:bg-[#721532] text-white text-sm sm:text-base font-semibold shadow-lg hover:shadow-xl transition-all transform hover:scale-105 active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full sm:w-auto px-7 sm:px-8 py-3.5 sm:py-4 rounded-2xl bg-[#8B1E3F] hover:bg-[#721532] text-white text-sm sm:text-base font-semibold shadow-lg hover:shadow-xl transition-all transform hover:scale-105 active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
           >
             <span>Start a Celebration</span>
             <ArrowRight className="w-4 h-4" />
@@ -145,7 +149,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <button
             type="button"
             onClick={onOpenSample}
-            className="w-full sm:w-auto px-7 py-4 rounded-2xl bg-white hover:bg-[#FFFDFB] text-[#4A1525] border border-[#EADBDA] text-sm sm:text-base font-semibold shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full sm:w-auto px-6 sm:px-7 py-3.5 sm:py-4 rounded-2xl bg-white hover:bg-[#FFFDFB] text-[#4A1525] border border-[#EADBDA] text-sm sm:text-base font-semibold shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <Play className="w-4 h-4 text-[#8B1E3F] fill-[#8B1E3F]" />
             <span>Experience Live Sample</span>
@@ -153,32 +157,32 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
 
         {/* Interactive Visual Envelope Showcase */}
-        <div className="relative max-w-3xl mx-auto rounded-3xl border border-[#E5D2C5] bg-gradient-to-b from-[#FDFBF7] to-[#F5ECE5] p-6 sm:p-10 shadow-2xl overflow-hidden">
-          <div className="flex flex-col sm:flex-row items-center gap-8 text-left">
+        <div className="relative max-w-3xl mx-auto rounded-3xl border border-[#E5D2C5] bg-gradient-to-b from-[#FDFBF7] to-[#F5ECE5] p-5 sm:p-10 shadow-xl overflow-hidden">
+          <div className="flex flex-col sm:flex-row items-center gap-6 sm:gap-8 text-center sm:text-left">
             {/* 3D Wax Seal Envelope Teaser */}
-            <div className="w-48 h-36 sm:w-60 sm:h-44 rounded-2xl bg-gradient-to-br from-[#FFFDF9] to-[#EFE3D8] border-2 border-[#D8C2B0] shadow-xl relative flex flex-col items-center justify-center p-4 cursor-pointer hover:scale-105 transition-transform shrink-0" onClick={onOpenSample}>
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#A62B50] to-[#8B1E3F] text-white flex items-center justify-center shadow-md border border-[#D4AF37]/50 mb-2">
-                <Heart className="w-6 h-6 fill-white" />
+            <div className="w-44 h-32 sm:w-60 sm:h-44 rounded-2xl bg-gradient-to-br from-[#FFFDF9] to-[#EFE3D8] border-2 border-[#D8C2B0] shadow-xl relative flex flex-col items-center justify-center p-3 sm:p-4 cursor-pointer hover:scale-105 transition-transform shrink-0" onClick={onOpenSample}>
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-[#A62B50] to-[#8B1E3F] text-white flex items-center justify-center shadow-md border border-[#D4AF37]/50 mb-1.5 sm:mb-2">
+                <Heart className="w-5 h-5 sm:w-6 sm:h-6 fill-white" />
               </div>
               <span className="font-serif italic text-xs text-[#8B1E3F]">
                 Special Delivery
               </span>
-              <span className="font-serif font-bold text-sm text-[#4A1525]">
+              <span className="font-serif font-bold text-xs sm:text-sm text-[#4A1525]">
                 Tap to Unseal
               </span>
             </div>
 
-            <div className="space-y-3">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/80 border border-[#EADBDA] text-[11px] font-semibold text-[#8B1E3F]">
+            <div className="space-y-2.5 sm:space-y-3">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/80 border border-[#EADBDA] text-[10px] sm:text-[11px] font-semibold text-[#8B1E3F]">
                 <Sparkles className="w-3 h-3 text-[#D4AF37]" />
                 <span>What Your Celebrant Experiences</span>
               </div>
-              <h3 className="font-serif text-2xl font-bold text-[#4A1525]">
+              <h3 className="font-serif text-xl sm:text-2xl font-bold text-[#4A1525]">
                 An Unboxing They Will Never Forget
               </h3>
               <p className="text-xs sm:text-sm text-[#6E4F57] leading-relaxed">
-                1. Animated memory filmstrip cycling cherished moments. <br />
-                2. Tap the royal wax seal to burst confetti and unseal the letter. <br />
+                1. Animated flipping keepsake photobook with cherished photos. <br />
+                2. Tap the royal wax seal to burst confetti and open the letter. <br />
                 3. Listen to your recorded voice while reading the letter. <br />
                 4. Cherished scrapbook polaroids & celebratory fireworks!
               </p>

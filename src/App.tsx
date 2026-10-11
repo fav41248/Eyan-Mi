@@ -17,7 +17,9 @@ import { AuthModal } from './components/AuthModal';
 import { PhotoLoader } from './components/PhotoLoader';
 import { BirthdayEnvelopeExperience } from './components/BirthdayEnvelopeExperience';
 import { ConfettiHeartsCanvas } from './components/ConfettiHeartsCanvas';
-import { Volume2, VolumeX, Heart, Sparkles, Eye } from 'lucide-react';
+import { KeepsakeExportModal } from './components/KeepsakeExportModal';
+import { ScheduledLockScreen } from './components/ScheduledLockScreen';
+import { Volume2, VolumeX, Heart, Sparkles, Eye, Printer, Download, Lock, Unlock } from 'lucide-react';
 
 type AppView = 'landing' | 'dashboard' | 'studio' | 'admin' | 'celebration';
 
@@ -36,8 +38,10 @@ function MainApp() {
   const [isLoadingCelebrant, setIsLoadingCelebrant] = useState(false);
   const [step, setStep] = useState<'loader' | 'celebration'>('loader');
   const [isEnvelopeOpen, setIsEnvelopeOpen] = useState(false);
+  const [isScheduledUnlocked, setIsScheduledUnlocked] = useState(false);
   const [burstTrigger, setBurstTrigger] = useState(0);
   const [isMuted, setIsMuted] = useState(() => soundtrackEngine.isMuted());
+  const [keepsakeModalOpen, setKeepsakeModalOpen] = useState(false);
 
   // Parse URL on mount and url changes (supports query params, clean path /c/name, and hash routes)
   const parseUrl = () => {
@@ -153,6 +157,7 @@ function MainApp() {
 
       let isMounted = true;
       setIsLoadingCelebrant(true);
+      setIsScheduledUnlocked(false);
       setStep('loader');
       setIsEnvelopeOpen(false);
 
@@ -229,6 +234,66 @@ function MainApp() {
       );
     }
 
+    const isCurrentlyLocked = Boolean(
+      config.isScheduledUnlock &&
+      config.unlockAt &&
+      !isScheduledUnlocked &&
+      new Date(config.unlockAt).getTime() > Date.now()
+    );
+
+    if (isCurrentlyLocked) {
+      return (
+        <div className="relative min-h-screen bg-[#1F0A12] text-white">
+          <ConfettiHeartsCanvas burstTrigger={burstTrigger} interactive={false} />
+
+          {/* Live Creator Draft Preview Banner for Locked Screen */}
+          {isPreviewMode && (
+            <div className="fixed top-2 sm:top-3 left-1/2 -translate-x-1/2 z-50 flex items-center justify-between gap-1.5 sm:gap-4 bg-[#4A1525]/95 text-white backdrop-blur-md px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full shadow-2xl border border-[#D4AF37]/40 text-xs animate-fade-in max-w-[96vw]">
+              <div className="flex items-center gap-1 font-medium truncate min-w-0">
+                <Lock className="w-3.5 h-3.5 text-[#FFD782] shrink-0" />
+                <span className="truncate text-[11px] sm:text-xs text-[#FFE8B8]">
+                  Locked Preview: <strong>{config.recipientName || 'Celebrant'}</strong>
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsScheduledUnlocked(true);
+                    setBurstTrigger((prev) => prev + 1);
+                  }}
+                  className="px-2.5 sm:px-3 py-1 bg-[#8B1E3F] hover:bg-[#A6244A] text-white rounded-full text-[10px] sm:text-[11px] font-bold transition-colors cursor-pointer border border-[#FF94AB]/40 shadow-xs flex items-center gap-1"
+                >
+                  <Unlock className="w-3 h-3 text-[#FFD782]" />
+                  <span>Preview Unlocked</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundtrackEngine.stop();
+                    setIsPreviewMode(false);
+                    setView('studio');
+                  }}
+                  className="px-2.5 sm:px-3.5 py-1 bg-white text-[#8B1E3F] hover:bg-[#FFF0F2] rounded-full font-bold text-[10px] sm:text-[11px] transition-colors cursor-pointer shadow-xs"
+                >
+                  ✏️ <span className="hidden sm:inline">Back to Editor</span><span className="sm:hidden">Edit</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          <ScheduledLockScreen
+            config={config}
+            isPreview={isPreviewMode}
+            onUnlock={() => {
+              setIsScheduledUnlocked(true);
+              setBurstTrigger((prev) => prev + 1);
+            }}
+          />
+        </div>
+      );
+    }
+
     const loaderPhotosToDisplay =
       config.loaderPhotos && config.loaderPhotos.length > 0
         ? config.loaderPhotos
@@ -240,14 +305,24 @@ function MainApp() {
 
         {/* Live Creator Draft Preview Banner */}
         {isPreviewMode && (
-          <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 sm:gap-4 bg-[#4A1525]/95 text-white backdrop-blur-md px-3.5 py-2 sm:px-5 sm:py-2.5 rounded-full shadow-2xl border border-white/20 text-xs animate-fade-in max-w-[95vw]">
-            <div className="flex items-center gap-1.5 font-medium truncate">
-              <Eye className="w-4 h-4 text-[#E5D2C5] shrink-0" />
-              <span className="truncate">
-                Previewing: <strong>{config.recipientName || 'Celebrant'}</strong>
+          <div className="fixed top-2 sm:top-3 left-1/2 -translate-x-1/2 z-50 flex items-center justify-between gap-1.5 sm:gap-4 bg-[#4A1525]/95 text-white backdrop-blur-md px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full shadow-2xl border border-white/20 text-xs animate-fade-in max-w-[96vw]">
+            <div className="flex items-center gap-1 font-medium truncate min-w-0">
+              <Eye className="w-3.5 h-3.5 text-[#E5D2C5] shrink-0" />
+              <span className="truncate text-[11px] sm:text-xs">
+                Draft: <strong>{config.recipientName || 'Celebrant'}</strong>
               </span>
             </div>
-            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0">
+              {config.isScheduledUnlock && config.unlockAt && (
+                <button
+                  type="button"
+                  onClick={() => setIsScheduledUnlocked(false)}
+                  className="px-2 sm:px-2.5 py-1 bg-white/20 hover:bg-white/30 text-[#FFD7DF] rounded-full text-[10px] sm:text-[11px] font-semibold transition-colors cursor-pointer"
+                  title="Switch to viewing the locked countdown screen"
+                >
+                  ⏳ Lock Screen
+                </button>
+              )}
               {step === 'loader' && (
                 <button
                   type="button"
@@ -257,9 +332,9 @@ function MainApp() {
                       soundtrackEngine.start(config.soundtrackPreset, config.customAudioUrl);
                     }
                   }}
-                  className="px-2.5 py-1 bg-white/20 hover:bg-white/30 text-white rounded-full text-[11px] font-semibold transition-colors cursor-pointer"
+                  className="px-2 sm:px-2.5 py-1 bg-white/20 hover:bg-white/30 text-white rounded-full text-[10px] sm:text-[11px] font-semibold transition-colors cursor-pointer"
                 >
-                  Skip to Envelope
+                  Skip
                 </button>
               )}
               <button
@@ -269,9 +344,9 @@ function MainApp() {
                   setIsPreviewMode(false);
                   setView('studio');
                 }}
-                className="px-3.5 py-1 bg-white text-[#8B1E3F] hover:bg-[#FFF0F2] rounded-full font-bold text-[11px] transition-colors cursor-pointer shadow-xs"
+                className="px-2.5 sm:px-3.5 py-1 bg-white text-[#8B1E3F] hover:bg-[#FFF0F2] rounded-full font-bold text-[10px] sm:text-[11px] transition-colors cursor-pointer shadow-xs"
               >
-                ✏️ Back to Editor
+                ✏️ <span className="hidden sm:inline">Back to Editor</span><span className="sm:hidden">Edit</span>
               </button>
             </div>
           </div>
@@ -315,38 +390,72 @@ function MainApp() {
               voiceDuration={config.voiceDuration}
               galleryPhotos={config.photos}
               finaleMessage={config.finaleExactMessage}
+              celebrationConfig={config}
+              onOpenExportModal={() => setKeepsakeModalOpen(true)}
             />
 
-            {/* Floating Soundtrack Mute Toggle */}
-            {config.soundtrackPreset && config.soundtrackPreset !== 'none' && (
-              <button
-                type="button"
-                onClick={() => {
-                  const muted = soundtrackEngine.toggleMute();
-                  setIsMuted(muted);
-                }}
-                className="fixed bottom-4 left-4 z-40 p-2.5 rounded-full bg-white/80 hover:bg-white text-[#4A1525] shadow-md border border-[#EADBDA] backdrop-blur-md transition-all active:scale-95 cursor-pointer"
-                title={isMuted ? 'Unmute soundtrack' : 'Mute soundtrack'}
-              >
-                {isMuted ? (
-                  <VolumeX className="w-5 h-5 text-[#8C6B73]" />
-                ) : (
-                  <Volume2 className="w-5 h-5 text-[#8B1E3F]" />
+            {/* Bottom Floating Control Dock - Clean, non-overlapping on all devices */}
+            <div className="fixed bottom-3 sm:bottom-4 inset-x-3 sm:inset-x-6 z-40 pointer-events-none flex items-center justify-between gap-2">
+              {/* Left Dock: Audio & Export */}
+              <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2">
+                {config.soundtrackPreset && config.soundtrackPreset !== 'none' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const muted = soundtrackEngine.toggleMute();
+                      setIsMuted(muted);
+                    }}
+                    className="p-2 sm:p-2.5 rounded-full bg-white/90 hover:bg-white text-[#4A1525] shadow-md border border-[#EADBDA] backdrop-blur-md transition-all active:scale-95 cursor-pointer"
+                    title={isMuted ? 'Unmute soundtrack' : 'Mute soundtrack'}
+                    aria-label={isMuted ? 'Unmute soundtrack' : 'Mute soundtrack'}
+                  >
+                    {isMuted ? (
+                      <VolumeX className="w-4 h-4 text-[#8C6B73]" />
+                    ) : (
+                      <Volume2 className="w-4 h-4 text-[#8B1E3F]" />
+                    )}
+                  </button>
                 )}
-              </button>
-            )}
 
-            {/* Subtle Eyan mi Brand Link */}
-            <div className="fixed bottom-4 right-4 z-40">
-              <button
-                type="button"
-                onClick={() => navigateTo('landing')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/90 hover:bg-white text-[#8B1E3F] text-xs font-semibold shadow-md border border-[#EADBDA] backdrop-blur-md transition-all cursor-pointer"
-              >
-                <Heart className="w-3.5 h-3.5 fill-[#8B1E3F]" />
-                <span>Made with Eyan mi</span>
-              </button>
+                {isEnvelopeOpen && (
+                  <button
+                    type="button"
+                    onClick={() => setKeepsakeModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-white/90 hover:bg-white text-[#8B1E3F] text-xs font-semibold shadow-md border border-[#EADBDA] backdrop-blur-md transition-all active:scale-95 cursor-pointer"
+                    title="Download or Print Keepsake PDF"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-[#8B1E3F]" />
+                    <span className="hidden sm:inline">Save Keepsake PDF</span>
+                    <span className="sm:hidden">PDF</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Right Dock: Brand Link */}
+              <div className="pointer-events-auto">
+                <button
+                  type="button"
+                  onClick={() => navigateTo('landing')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/90 hover:bg-white text-[#8B1E3F] text-xs font-semibold shadow-md border border-[#EADBDA] backdrop-blur-md transition-all cursor-pointer"
+                >
+                  <Heart className="w-3.5 h-3.5 fill-[#8B1E3F]" />
+                  <span className="hidden sm:inline">Made with Eyan mi</span>
+                  <span className="sm:hidden">Eyan mi</span>
+                </button>
+              </div>
             </div>
+
+            {/* Celebrant High-Quality Keepsake PDF Export Modal */}
+            <KeepsakeExportModal
+              isOpen={keepsakeModalOpen}
+              onClose={() => setKeepsakeModalOpen(false)}
+              celebration={config}
+              deliveryUrl={
+                typeof window !== 'undefined'
+                  ? `${window.location.origin}/c/${config.id || celebrantId || 'celebrant'}`
+                  : ''
+              }
+            />
           </div>
         )}
       </div>

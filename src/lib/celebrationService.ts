@@ -257,13 +257,18 @@ export const celebrationService = {
   },
 
   /**
-   * Delete celebration
+   * Delete celebration with ownership headers
    */
-  async deleteCelebration(id: string): Promise<void> {
+  async deleteCelebration(id: string, requester?: { userId?: string; userEmail?: string }): Promise<void> {
     const cleanId = id.trim().toLowerCase();
     try {
+      const headers: Record<string, string> = {};
+      if (requester?.userId) headers['x-user-id'] = requester.userId;
+      if (requester?.userEmail) headers['x-user-email'] = requester.userEmail;
+
       await fetch(`/api/celebration/${encodeURIComponent(cleanId)}`, {
         method: 'DELETE',
+        headers,
       });
     } catch (e) {
       console.warn('Server delete note:', e);
@@ -279,9 +284,13 @@ export const celebrationService = {
   /**
    * Super Admin: Fetch all registered users
    */
-  async getAllUsers(): Promise<UserProfile[]> {
+  async getAllUsers(adminEmail?: string): Promise<UserProfile[]> {
     try {
-      const res = await withTimeout(fetch('/api/users'), 5000);
+      const headers: Record<string, string> = {};
+      if (adminEmail) {
+        headers['x-admin-email'] = adminEmail;
+      }
+      const res = await withTimeout(fetch('/api/users', { headers }), 5000);
       if (res.ok) {
         return await res.json();
       }

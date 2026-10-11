@@ -13,7 +13,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { GoogleGenAI } from '@google/genai';
-import firebaseConfig from './firebase-applet-config.json' with { type: 'json' };
+import rawFirebaseConfig from './firebase-applet-config.json' with { type: 'json' };
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
@@ -24,6 +24,17 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Merge environment variable overrides if provided (prevents committing secrets)
+const firebaseConfig = {
+  ...rawFirebaseConfig,
+  apiKey: process.env.FIREBASE_API_KEY || rawFirebaseConfig.apiKey,
+  projectId: process.env.FIREBASE_PROJECT_ID || rawFirebaseConfig.projectId,
+  appId: process.env.FIREBASE_APP_ID || rawFirebaseConfig.appId,
+  authDomain: process.env.FIREBASE_AUTH_DOMAIN || rawFirebaseConfig.authDomain,
+  firestoreDatabaseId: process.env.FIRESTORE_DATABASE_ID || rawFirebaseConfig.firestoreDatabaseId,
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET || rawFirebaseConfig.storageBucket,
+};
 
 // Initialize Cloud Firestore on backend server
 const fbApp = initializeApp(firebaseConfig, 'backend-server-fb');
@@ -171,18 +182,22 @@ app.post('/api/shorten-url', async (req, res) => {
   return res.json({ shortUrl: url });
 });
 
-// Password Hashing & Verification Utilities
+// Password Hashing & Verification Utilities (Hardened PBKDF2 with 100,000 iterations)
 function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
-  return `${salt}:${hash}`;
+  const iterations = 100000;
+  const hash = crypto.pbkdf2Sync(password, salt, iterations, 64, 'sha512').toString('hex');
+  return `${salt}:${hash}:${iterations}`;
 }
 
 function verifyPassword(password: string, stored: string): boolean {
   try {
-    const [salt, originalHash] = stored.split(':');
+    const parts = stored.split(':');
+    const salt = parts[0];
+    const originalHash = parts[1];
+    const iterations = parts[2] ? parseInt(parts[2], 10) : 1000; // Backwards compatible with legacy 1,000 iterations
     if (!salt || !originalHash) return false;
-    const testHash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+    const testHash = crypto.pbkdf2Sync(password, salt, iterations, 64, 'sha512').toString('hex');
     return crypto.timingSafeEqual(Buffer.from(testHash, 'hex'), Buffer.from(originalHash, 'hex'));
   } catch {
     return false;
@@ -377,9 +392,14 @@ app.post('/api/user/sync', async (req, res) => {
   }
 });
 
-// GET /api/users - Super Admin endpoint to list all users
+// GET /api/users - Super Admin endpoint to list all users (Secured)
 app.get('/api/users', async (req, res) => {
   try {
+    const adminEmail = (req.headers['x-admin-email'] as string || '').toLowerCase().trim();
+    if (adminEmail !== SUPER_ADMIN_EMAIL.toLowerCase()) {
+      return res.status(403).json({ error: 'forbidden', message: 'Super admin authorization required' });
+    }
+
     const usersCol = collection(db, USERS_COLLECTION);
     const snap = await getDocs(usersCol);
     const list: any[] = [];
@@ -649,13 +669,28 @@ app.post('/api/celebration', async (req, res) => {
   }
 });
 
-// DELETE /api/celebration/:id - Delete celebration
+// DELETE /api/celebration/:id - Delete celebration with authorization check
 app.delete('/api/celebration/:id', async (req, res) => {
   try {
     const rawId = req.params.id.trim().toLowerCase();
     const cleanId = rawId.replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    const requesterUserId = (req.headers['x-user-id'] as string || '').trim();
+    const requesterEmail = (req.headers['x-user-email'] as string || '').toLowerCase().trim();
 
     const docRef = doc(db, CELEBRATIONS_COLLECTION, cleanId);
+    const snap = await getDoc(docRef);
+
+    if (snap.exists()) {
+      const data = snap.data();
+      const isOwner = requesterUserId && data.userId === requesterUserId;
+      const isSuperAdmin = requesterEmail === SUPER_ADMIN_EMAIL.toLowerCase();
+
+      // Only allow owner or super admin to delete
+      if (!isOwner && !isSuperAdmin) {
+        return res.status(403).json({ error: 'forbidden', message: 'You do not have permission to delete this celebration' });
+      }
+    }
+
     await deleteDoc(docRef);
 
     // Clean up subdocs if possible

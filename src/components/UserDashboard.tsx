@@ -21,7 +21,10 @@ import {
   Globe,
   MessageCircle,
   Link2,
+  Printer,
+  Lock,
 } from 'lucide-react';
+import { KeepsakeExportModal } from './KeepsakeExportModal';
 
 interface UserDashboardProps {
   onCreateNew: () => void;
@@ -42,6 +45,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [celebrations, setCelebrations] = useState<CelebrationConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [exportCelebration, setExportCelebration] = useState<CelebrationConfig | null>(null);
 
   const loadCelebrations = async () => {
     setLoading(true);
@@ -78,7 +82,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       return;
     }
     try {
-      await celebrationService.deleteCelebration(id);
+      await celebrationService.deleteCelebration(id, {
+        userId: user?.uid || userProfile?.uid,
+        userEmail: user?.email || userProfile?.email,
+      });
       setCelebrations((prev) => prev.filter((c) => c.id !== id));
     } catch (err) {
       console.error('Delete failed:', err);
@@ -111,20 +118,21 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 sm:gap-2.5">
           {isAdmin && (
             <button
               type="button"
               onClick={onGoToAdmin}
-              className="px-3.5 py-1.5 rounded-xl bg-[#FFF0F2] border border-[#F5CDD3] text-[#8B1E3F] text-xs font-bold hover:bg-[#FCE6E9] transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+              className="px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-[#FFF0F2] border border-[#F5CDD3] text-[#8B1E3F] text-xs font-bold hover:bg-[#FCE6E9] transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
             >
               <Shield className="w-3.5 h-3.5" />
-              <span>Super Admin Panel</span>
+              <span className="hidden sm:inline">Super Admin Panel</span>
+              <span className="sm:hidden">Admin</span>
             </button>
           )}
 
           <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-[#EADBDA]">
-            <span className="text-xs font-medium text-[#4A1525]">
+            <span className="text-xs font-medium text-[#4A1525] truncate max-w-[120px]">
               {displayName}
             </span>
           </div>
@@ -132,8 +140,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           <button
             type="button"
             onClick={logout}
-            className="p-2 rounded-xl text-[#8C6B73] hover:text-[#4A1525] hover:bg-[#FAF7F2] transition-colors cursor-pointer"
+            className="p-1.5 sm:p-2 rounded-xl text-[#8C6B73] hover:text-[#4A1525] hover:bg-[#FAF7F2] transition-colors cursor-pointer"
             title="Sign out"
+            aria-label="Sign out"
           >
             <LogOut className="w-4 h-4" />
           </button>
@@ -218,9 +227,37 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                     <div>
                       {/* Top Badges */}
                       <div className="flex items-center justify-between gap-2 mb-3">
-                        <span className="capitalize px-2.5 py-0.5 rounded-full bg-[#FAF7F2] border border-[#EADBDA] text-[11px] font-semibold text-[#8B1E3F]">
-                          {c.occasion || 'Birthday'}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="capitalize px-2.5 py-0.5 rounded-full bg-[#FAF7F2] border border-[#EADBDA] text-[11px] font-semibold text-[#8B1E3F]">
+                            {c.occasion || 'Birthday'}
+                          </span>
+                          {c.isScheduledUnlock && c.unlockAt && (
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                new Date(c.unlockAt).getTime() > Date.now()
+                                  ? 'bg-[#FFF0F2] text-[#8B1E3F] border border-[#F5CDD3]'
+                                  : 'bg-[#EBF7EE] text-[#1E7238] border border-[#C5E8CE]'
+                              }`}
+                            >
+                              {new Date(c.unlockAt).getTime() > Date.now() ? (
+                                <>
+                                  <Lock className="w-2.5 h-2.5" />
+                                  <span>
+                                    Unlocks {new Date(c.unlockAt).toLocaleDateString(undefined, {
+                                      month: 'short',
+                                      day: 'numeric',
+                                    })}
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <Check className="w-2.5 h-2.5" />
+                                  <span>Unlocked</span>
+                                </>
+                              )}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-1.5 text-[11px] text-[#8C6B73]">
                           {c.letterType === 'voice' && <Mic className="w-3.5 h-3.5 text-[#8B1E3F]" />}
                           {c.letterType === 'typed' && <FileText className="w-3.5 h-3.5 text-[#8B1E3F]" />}
@@ -252,8 +289,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                     </div>
 
                     {/* Bottom Actions */}
-                    <div className="pt-2 flex items-center justify-between gap-2 border-t border-[#F2EAE5]">
-                      <div className="flex items-center gap-1.5">
+                    <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-[#F2EAE5]">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <button
                           type="button"
                           onClick={() => handleCopyLink(c.id)}
@@ -265,7 +302,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
                         <a
                           href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
-                            `❤️ Dear ${c.nickname || c.recipientName}, your personalized celebration moment is ready on Eyan Mi! ✨ Tap to open your envelope:\n${getCelebrationLink(c.id)}`
+                            c.isScheduledUnlock && c.unlockAt && new Date(c.unlockAt).getTime() > Date.now()
+                              ? `❤️ Dear ${c.nickname || c.recipientName}, a special celebration moment & personalized epistle has been created for you on Eyan Mi! ✨ It is under royal seal and unlocks on ${new Date(c.unlockAt).toLocaleDateString(undefined, { dateStyle: 'full' })} at ${c.unlockAt.slice(11, 16)}. Tap to view your live countdown:\n${getCelebrationLink(c.id)}`
+                              : `❤️ Dear ${c.nickname || c.recipientName}, your personalized celebration moment is ready on Eyan Mi! ✨ Tap to open your envelope:\n${getCelebrationLink(c.id)}`
                           )}`}
                           target="_blank"
                           rel="noreferrer"
@@ -285,6 +324,15 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                         </button>
                         <button
                           type="button"
+                          onClick={() => setExportCelebration(c)}
+                          className="p-2 rounded-xl border border-[#EADBDA] bg-[#FAF7F2] hover:bg-[#F2EAE5] text-[#8B1E3F] transition-colors cursor-pointer"
+                          title="Print or Download PDF Keepsake"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() => handleDelete(c.id, c.recipientName)}
                           className="p-2 rounded-xl border border-rose-200 bg-white hover:bg-rose-50 text-rose-600 transition-colors cursor-pointer"
                           title="Delete celebration"
@@ -296,7 +344,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                       <button
                         type="button"
                         onClick={() => onEditCelebration(c)}
-                        className="px-3.5 py-1.5 rounded-xl bg-[#8B1E3F] hover:bg-[#721532] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                        className="px-3.5 py-1.5 rounded-xl bg-[#8B1E3F] hover:bg-[#721532] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs ml-auto sm:ml-0"
                       >
                         <Edit3 className="w-3 h-3" />
                         <span>Edit</span>
@@ -309,6 +357,16 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           )}
         </div>
       </main>
+
+      {/* Keepsake Export Modal */}
+      {exportCelebration && (
+        <KeepsakeExportModal
+          isOpen={Boolean(exportCelebration)}
+          onClose={() => setExportCelebration(null)}
+          celebration={exportCelebration}
+          deliveryUrl={getCelebrationLink(exportCelebration.id)}
+        />
+      )}
     </div>
   );
 };

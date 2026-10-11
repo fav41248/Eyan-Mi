@@ -145,3 +145,85 @@
   z-index: 25;
 }
 
+/* Audio Waveform Animations */
+@keyframes waveformPulse1 {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.4); }
+}
+
+@keyframes waveformPulse2 {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.7); }
+}
+
+@keyframes waveformPulse3 {
+  0%, 100% { transform: scaleY(0.85); }
+  50% { transform: scaleY(1.5); }
+}
+
+@keyframes waveformPulse4 {
+  0%, 100% { transform: scaleY(1.1); }
+  50% { transform: scaleY(0.6); }
+}
+
+.animate-waveform-pulse-1 {
+  animation: waveformPulse1 0.75s ease-in-out infinite;
+}
+
+.animate-waveform-pulse-2 {
+  animation: waveformPulse2 0.6s ease-in-out infinite 0.15s;
+}
+
+.animate-waveform-pulse-3 {
+  animation: waveformPulse3 0.85s ease-in-out infinite 0.3s;
+}
+
+.animate-waveform-pulse-4 {
+  animation: waveformPulse4 0.65s ease-in-out infinite 0.1s;
+}
+
+/* Photobook 3D Page Flip Animations */
+@keyframes pageFlipForward {
+  0% {
+    transform: perspective(1200px) rotateY(0deg) scale(1);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    transform-origin: left center;
+  }
+  50% {
+    transform: perspective(1200px) rotateY(-45deg) scale(0.96);
+    box-shadow: -15px 15px 25px rgba(0, 0, 0, 0.25);
+    transform-origin: left center;
+  }
+  100% {
+    transform: perspective(1200px) rotateY(0deg) scale(1);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    transform-origin: left center;
+  }
+}
+
+@keyframes pageFlipBackward {
+  0% {
+    transform: perspective(1200px) rotateY(0deg) scale(1);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    transform-origin: right center;
+  }
+  50% {
+    transform: perspective(1200px) rotateY(45deg) scale(0.96);
+    box-shadow: 15px 15px 25px rgba(0, 0, 0, 0.25);
+    transform-origin: right center;
+  }
+  100% {
+    transform: perspective(1200px) rotateY(0deg) scale(1);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    transform-origin: right center;
+  }
+}
+
+.animate-page-flip-forward {
+  animation: pageFlipForward 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.animate-page-flip-backward {
+  animation: pageFlipBackward 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+

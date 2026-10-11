@@ -6,3 +6,11 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Sensitive credentials & API keys (prevents GitHub secret scanning alerts)
+firebase-applet-config.json
+!firebase-applet-config.example.json
+*.pem
+*.key
+credentials.json
+service-account*.json

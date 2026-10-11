@@ -1,12 +1,20 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // USERS COLLECTION
+    // Read and write allowed for app synchronization; deletion restricted.
     match /users/{userId} {
-      allow read, write: if true;
+      allow read, create, update: if true;
+      allow delete: if request.auth != null && request.auth.token.email == 'ayojire1@gmail.com';
     }
 
+    // CELEBRATIONS COLLECTION
+    // Celebrations must be readable by celebrants and guests at /c/:slug.
+    // Creation and updates supported for celebration experiences.
     match /celebrations/{celebrantId} {
-      allow read, write: if true;
+      allow read, create, update: if true;
+      allow delete: if request.auth != null || (resource != null && resource.data.userId == 'anonymous');
 
       match /{allSubcollections=**} {
         allow read, write: if true;

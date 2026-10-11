@@ -125,11 +125,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loginWithGoogle = async () => {
     try {
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
       const result = await signInWithPopup(auth, provider);
       await syncUserToBackend(result.user);
     } catch (err: any) {
-      console.error('Google Sign-In failed:', err);
-      throw err;
+      console.warn('Google Sign-In notice:', err?.code, err?.message);
+      const code = err?.code || '';
+      const msg = err?.message || '';
+
+      if (code === 'auth/popup-blocked') {
+        throw new Error('Sign-in popup was blocked by your browser. Please allow popups for this site, or sign in using your email.');
+      }
+      if (code === 'auth/popup-closed-by-user') {
+        throw new Error('Google sign-in was cancelled before completion. Please try again.');
+      }
+      if (
+        code === 'auth/operation-not-allowed' ||
+        msg.includes('operation-not-allowed') ||
+        code === 'auth/configuration-not-found'
+      ) {
+        throw new Error('Google Sign-in is not yet enabled in the Firebase Console. You can immediately create an account or sign in with your Email & Password below!');
+      }
+      if (code === 'auth/unauthorized-domain' || msg.includes('unauthorized-domain')) {
+        throw new Error('This domain is not authorized in Firebase Console yet. Please sign in with Email & Password or use Guest Mode!');
+      }
+
+      throw new Error(msg || 'Google sign-in could not be completed. Please try again or use email sign-in.');
     }
   };
 
@@ -142,17 +163,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await syncUserToBackend(cred.user);
       return;
     } catch (firebaseErr: any) {
+      console.warn('Firebase client login error, trying backend store:', firebaseErr?.code, firebaseErr?.message);
       const errCode = firebaseErr?.code || '';
       const errMsg = firebaseErr?.message || '';
 
-      // If Firebase Auth has disabled email/pass (operation-not-allowed) or user not in client auth
-      if (
-        errCode === 'auth/operation-not-allowed' ||
-        errMsg.includes('operation-not-allowed') ||
-        errCode === 'auth/user-not-found' ||
-        errCode === 'auth/invalid-credential' ||
-        errCode === 'auth/configuration-not-found'
-      ) {
+      // Fallback to backend authentication route
+      try {
         const res = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -169,25 +185,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw new Error('Incorrect password. Please try again.');
         }
         if (data?.error === 'user-not-found') {
-          throw new Error('No account found with this email. Please check your email or create an account.');
+          throw new Error('No account found with this email. Please check your email or click Create Account.');
         }
-        throw new Error(data?.message || 'Invalid email or password.');
+        if (data?.message) {
+          throw new Error(data.message);
+        }
+      } catch (backendErr: any) {
+        if (backendErr.message && !backendErr.message.includes('fetch')) {
+          throw backendErr;
+        }
       }
 
-      if (errCode === 'auth/wrong-password' || errMsg.includes('wrong-password')) {
+      if (errCode === 'auth/wrong-password' || errMsg.includes('wrong-password') || errCode === 'auth/invalid-credential') {
         throw new Error('Incorrect password. Please try again.');
       }
       if (errCode === 'auth/user-not-found' || errMsg.includes('user-not-found')) {
-        throw new Error('No account found with this email. Please create an account.');
+        throw new Error('No account found with this email. Please click Create Account.');
       }
 
-      throw new Error(errMsg || 'Sign-in failed. Please check your credentials.');
+      throw new Error(errMsg || 'Sign-in failed. Please verify your email and password.');
     }
   };
 
   const signupWithEmail = async (email: string, pass: string, name: string) => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = (name.trim() || cleanEmail.split('@')[0]);
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      throw new Error('Please enter a valid email address.');
+    }
+    if (pass.length < 6) {
+      throw new Error('Password must be at least 6 characters long.');
+    }
 
     // 1. Try Firebase Auth first
     try {
@@ -198,6 +227,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await syncUserToBackend({ ...cred.user, displayName: cleanName });
       return;
     } catch (firebaseErr: any) {
+      console.warn('Firebase client signup error, trying backend register/login:', firebaseErr?.code, firebaseErr?.message);
       const errCode = firebaseErr?.code || '';
       const errMsg = firebaseErr?.message || '';
 
@@ -208,7 +238,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await syncUserToBackend(cred.user);
           return;
         } catch {
-          // If Firebase client login fails, check backend login
+          // Check backend login
           try {
             const res = await fetch('/api/auth/login', {
               method: 'POST',
@@ -227,34 +257,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // If Firebase Auth provider is not enabled in Firebase Console (operation-not-allowed)
-      if (
-        errCode === 'auth/operation-not-allowed' ||
-        errMsg.includes('operation-not-allowed') ||
-        errCode === 'auth/configuration-not-found'
-      ) {
-        const res = await fetch('/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: cleanEmail, password: pass, displayName: cleanName }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data?.message || 'Registration failed. Please try again.');
-        }
-        setUserProfile(data.user);
-        localStorage.setItem('eyanmi_auth_user', JSON.stringify(data.user));
-        return;
-      }
-
-      if (errCode === 'auth/weak-password' || errMsg.includes('weak-password')) {
-        throw new Error('Password must be at least 6 characters long.');
-      }
-      if (errCode === 'auth/invalid-email' || errMsg.includes('invalid-email')) {
-        throw new Error('Please enter a valid email address.');
-      }
-
-      // Final fallback to server registration
+      // Fallback to server registration endpoint
       try {
         const res = await fetch('/api/auth/register', {
           method: 'POST',
@@ -267,7 +270,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           localStorage.setItem('eyanmi_auth_user', JSON.stringify(data.user));
           return;
         }
-      } catch {}
+        if (data?.message) {
+          throw new Error(data.message);
+        }
+      } catch (regErr: any) {
+        if (regErr.message && !regErr.message.includes('fetch')) {
+          throw regErr;
+        }
+      }
+
+      if (errCode === 'auth/weak-password' || errMsg.includes('weak-password')) {
+        throw new Error('Password must be at least 6 characters long.');
+      }
+      if (errCode === 'auth/invalid-email' || errMsg.includes('invalid-email')) {
+        throw new Error('Please enter a valid email address.');
+      }
 
       throw new Error(errMsg || 'Sign-up failed. Please try again.');
     }

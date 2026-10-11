@@ -21,6 +21,7 @@ import {
   ArrowRight,
   Upload,
   Play,
+  Pause,
   Square,
   Trash2,
   Copy,
@@ -38,7 +39,17 @@ import {
   CheckCheck,
   HelpCircle,
   Eye,
+  AlertCircle,
+  Printer,
+  Download,
+  Calendar,
+  Clock,
+  Lock,
+  Unlock,
+  Bell,
 } from 'lucide-react';
+import { KeepsakeExportModal } from './KeepsakeExportModal';
+import { AudioWaveformVisualizer } from './AudioWaveformVisualizer';
 
 interface CelebrationStudioProps {
   initialConfig?: CelebrationConfig | null;
@@ -121,6 +132,26 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
     () => initialConfig?.finaleExactMessage || 'HAPPY BIRTHDAY MY PERSON! 🥂✨'
   );
 
+  // Scheduled Unlocking Date & Time state
+  const [isScheduledUnlock, setIsScheduledUnlock] = useState<boolean>(
+    () => Boolean(initialConfig?.isScheduledUnlock)
+  );
+  const [unlockDate, setUnlockDate] = useState<string>(() => {
+    if (initialConfig?.unlockAt) {
+      return initialConfig.unlockAt.slice(0, 10);
+    }
+    return '';
+  });
+  const [unlockTime, setUnlockTime] = useState<string>(() => {
+    if (initialConfig?.unlockAt && initialConfig.unlockAt.includes('T')) {
+      return initialConfig.unlockAt.slice(11, 16);
+    }
+    return '00:00';
+  });
+  const [unlockTimezone, setUnlockTimezone] = useState<string>(
+    () => initialConfig?.unlockTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'
+  );
+
   // Step 2: Letter & Voice
   const [letterType, setLetterType] = useState<LetterType>(
     initialConfig?.letterType || (initialConfig?.voiceAudioUrl ? 'both' : 'typed')
@@ -132,9 +163,19 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [micError, setMicError] = useState<string | null>(null);
+  const [isRequestingMic, setIsRequestingMic] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordTimerRef = useRef<number | null>(null);
+  const audioFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Studio Voice Preview state
+  const [isVoicePreviewPlaying, setIsVoicePreviewPlaying] = useState(false);
+  const [voicePreviewProgress, setVoicePreviewProgress] = useState(0);
+  const [voicePreviewCurrentTime, setVoicePreviewCurrentTime] = useState(0);
+  const studioVoiceAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Eyan Mi AI Epistle Modal State
   const [showAIModal, setShowAIModal] = useState(false);
@@ -153,6 +194,7 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
     () => initialConfig?.customAudioUrl || ''
   );
   const [playingPreview, setPlayingPreview] = useState<SoundtrackPreset | null>(null);
+  const [showKeepsakeModal, setShowKeepsakeModal] = useState(false);
 
   // Step 4: Photos
   const [loaderPhotos, setLoaderPhotos] = useState<GalleryPhoto[]>(
@@ -167,69 +209,182 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
   const loaderInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Clean up sound on unmount
+  // Clean up sound and recording tracks on unmount
   useEffect(() => {
     return () => {
       soundtrackEngine.stop();
       if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
     };
   }, []);
 
-  // Sync title when name changes
-  useEffect(() => {
-    if (recipientName && !initialConfig) {
-      setOpeningTitle(`For ${recipientName.trim()} ❤️`);
-      setFinaleExactMessage(`HAPPY ${occasion.toUpperCase()} ${recipientName.trim()}! 🥂✨`);
-    }
-  }, [recipientName, occasion]);
-
   // Voice recording handlers
   const handleStartRecording = async () => {
+    setMicError(null);
+    setIsRequestingMic(true);
+
+    // Check mediaDevices support
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getUserMedia !== 'function'
+    ) {
+      setIsRequestingMic(false);
+      setMicError(
+        'Direct microphone recording is not supported in this browser window or iframe. You can upload an audio note or voice recording file (MP3, M4A, WAV) directly below!'
+      );
+      return;
+    }
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+
+      mediaStreamRef.current = stream;
+
+      // Select supported mimeType
+      let mimeType = '';
+      if (typeof MediaRecorder !== 'undefined') {
+        const preferredTypes = [
+          'audio/webm;codecs=opus',
+          'audio/webm',
+          'audio/ogg;codecs=opus',
+          'audio/mp4',
+          'audio/aac',
+        ];
+        for (const type of preferredTypes) {
+          if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(type)) {
+            mimeType = type;
+            break;
+          }
+        }
+      }
+
+      const recorderOptions: MediaRecorderOptions = {};
+      if (mimeType) {
+        recorderOptions.mimeType = mimeType;
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, recorderOptions);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
       mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
+        if (e.data && e.data.size > 0) {
           audioChunksRef.current.push(e.data);
         }
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const finalType = mimeType || mediaRecorder.mimeType || 'audio/webm';
+        const blob = new Blob(audioChunksRef.current, { type: finalType });
         const reader = new FileReader();
         reader.onloadend = () => {
-          setVoiceAudioUrl(reader.result as string);
+          if (reader.result) {
+            setVoiceAudioUrl(reader.result as string);
+          }
         };
         reader.readAsDataURL(blob);
-        stream.getTracks().forEach((t) => t.stop());
+
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+          mediaStreamRef.current = null;
+        }
       };
 
-      mediaRecorder.start();
+      // Request data slices every 1s
+      mediaRecorder.start(1000);
       setIsRecording(true);
       setRecordingSeconds(0);
+      setIsRequestingMic(false);
+
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
       recordTimerRef.current = window.setInterval(() => {
         setRecordingSeconds((prev) => {
-          setVoiceDuration(prev + 1);
-          return prev + 1;
+          const next = prev + 1;
+          setVoiceDuration(next);
+          return next;
         });
       }, 1000);
-    } catch (err) {
-      alert('Microphone access is required to record your voice. Please allow microphone permissions.');
-    }
-  };
-
-  const handleStopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
+    } catch (err: any) {
+      console.error('Microphone access failed:', err);
+      setIsRequestingMic(false);
       setIsRecording(false);
       if (recordTimerRef.current) {
         clearInterval(recordTimerRef.current);
         recordTimerRef.current = null;
       }
+
+      if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
+        setMicError(
+          'Microphone permission was denied. Please allow microphone access in your browser or address bar, or upload an audio file directly below.'
+        );
+      } else if (err?.name === 'NotFoundError' || err?.name === 'DevicesNotFoundError') {
+        setMicError(
+          'No microphone device was detected on your computer/phone. You can upload an audio note file directly below!'
+        );
+      } else {
+        setMicError(
+          `Could not start microphone (${err?.message || 'Permission or iframe policy'}). You can record a voice memo on your phone and upload it directly below!`
+        );
+      }
     }
+  };
+
+  const handleStopRecording = () => {
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (e) {
+        console.warn('Error stopping mediaRecorder:', e);
+      }
+    }
+    setIsRecording(false);
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current = null;
+    }
+  };
+
+  const handleAudioFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('audio/') && !file.name.match(/\.(mp3|wav|m4a|aac|ogg|webm)$/i)) {
+      setMicError('Please select a valid audio file (MP3, M4A, WAV, AAC, WebM).');
+      return;
+    }
+
+    setMicError(null);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        setVoiceAudioUrl(dataUrl);
+
+        // Calculate duration via temporary Audio element
+        const tempAudio = new Audio();
+        tempAudio.src = dataUrl;
+        tempAudio.onloadedmetadata = () => {
+          if (tempAudio.duration && isFinite(tempAudio.duration)) {
+            setVoiceDuration(Math.round(tempAudio.duration));
+          }
+        };
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const handleRecipientNameChange = (name: string) => {
@@ -347,8 +502,8 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
     setTimeout(() => setCopiedFormat(null), 2500);
   };
 
-  // Live Test View as Celebrant: Previews the EXACT birthday letter being created
-  const handleTestViewAsCelebrant = () => {
+  // Helper to compile current studio state into a clean CelebrationConfig object
+  const getDraftCelebration = (): CelebrationConfig => {
     const rawParagraphs = epistleText
       .split(/\n\s*\n/)
       .map((p) => p.trim())
@@ -369,7 +524,7 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
             },
           ];
 
-    const draftConfig: CelebrationConfig = {
+    return {
       id: id.trim() || `eyan-${Date.now().toString().slice(-5)}`,
       recipientName: recipientName.trim() || 'My Celebrant',
       nickname: nickname.trim() || recipientName.trim() || 'Celebrant',
@@ -395,7 +550,15 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
       viewsCount: initialConfig?.viewsCount || 0,
       createdAt: initialConfig?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      isScheduledUnlock,
+      unlockAt: isScheduledUnlock && unlockDate ? `${unlockDate}T${unlockTime || '00:00'}:00` : undefined,
+      unlockTimezone,
     };
+  };
+
+  // Live Test View as Celebrant: Previews the EXACT birthday letter being created
+  const handleTestViewAsCelebrant = () => {
+    const draftConfig = getDraftCelebration();
 
     // Cache locally so it is immediately loaded without generic fallback
     try {
@@ -524,6 +687,9 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
         photos,
         updatedAt: new Date().toISOString(),
         createdAt: initialConfig?.createdAt || new Date().toISOString(),
+        isScheduledUnlock,
+        unlockAt: isScheduledUnlock && unlockDate ? `${unlockDate}T${unlockTime || '00:00'}:00` : undefined,
+        unlockTimezone,
       };
 
       await celebrationService.saveCelebration(payload);
@@ -548,36 +714,36 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-[#241318] flex flex-col font-sans">
       {/* Studio Header */}
-      <header className="bg-white/95 backdrop-blur-md border-b border-[#EADBDA] px-4 sm:px-8 py-3.5 sticky top-0 z-30 flex items-center justify-between shadow-xs">
-        <div className="flex items-center gap-3">
+      <header className="bg-white/95 backdrop-blur-md border-b border-[#EADBDA] px-3 sm:px-8 py-2.5 sm:py-3.5 sticky top-0 z-30 flex items-center justify-between shadow-xs">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             type="button"
             onClick={onExit}
-            className="p-2 rounded-xl text-[#6E4F57] hover:bg-[#FAF7F2] transition-colors cursor-pointer"
+            className="p-1.5 sm:p-2 rounded-xl text-[#6E4F57] hover:bg-[#FAF7F2] transition-colors cursor-pointer shrink-0"
             title="Back to dashboard"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-serif text-lg font-bold text-[#4A1525]">
-                Eyan mi · Celebration Studio
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className="font-serif text-base sm:text-lg font-bold text-[#4A1525] truncate">
+                <span className="hidden sm:inline">Eyan mi · </span>Studio
               </span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-[#FFF0F2] text-[#8B1E3F] font-semibold border border-[#F5CDD3]">
-                {recipientName ? `For ${recipientName}` : 'New Creation'}
+              <span className="text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-[#FFF0F2] text-[#8B1E3F] font-semibold border border-[#F5CDD3] truncate max-w-[100px] sm:max-w-none">
+                {recipientName ? `For ${recipientName}` : 'New'}
               </span>
             </div>
-            <p className="text-[11px] text-[#8C6B73]">
-              Short delivery link: <code className="font-mono text-[#8B1E3F]">/c/{id}</code>
+            <p className="text-[10px] sm:text-[11px] text-[#8C6B73] truncate">
+              Link: <code className="font-mono text-[#8B1E3F]">/c/{id}</code>
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <button
             type="button"
             onClick={handleTestViewAsCelebrant}
-            className="px-3.5 py-2 rounded-xl border border-[#8B1E3F] bg-white hover:bg-[#FFF0F2] text-[#8B1E3F] text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+            className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl border border-[#8B1E3F] bg-white hover:bg-[#FFF0F2] text-[#8B1E3F] text-[11px] sm:text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
             title="Preview the exact birthday letter you are working on"
           >
             <Eye className="w-3.5 h-3.5 text-[#8B1E3F]" />
@@ -588,17 +754,18 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="px-5 py-2 rounded-xl bg-[#8B1E3F] hover:bg-[#721532] text-white text-xs font-semibold shadow-xs flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+            className="px-3 sm:px-5 py-1.5 sm:py-2 rounded-xl bg-[#8B1E3F] hover:bg-[#721532] text-white text-[11px] sm:text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
           >
             <Save className="w-3.5 h-3.5" />
-            <span>{saving ? 'Publishing...' : 'Save & Publish'}</span>
+            <span className="hidden sm:inline">{saving ? 'Publishing...' : 'Save & Publish'}</span>
+            <span className="sm:hidden">{saving ? 'Saving...' : 'Save'}</span>
           </button>
         </div>
       </header>
 
       {/* Stepper Navigation */}
-      <div className="bg-white border-b border-[#EADBDA] px-4 sm:px-8 py-3 overflow-x-auto">
-        <div className="max-w-4xl mx-auto flex items-center justify-between gap-2 min-w-[540px]">
+      <div className="bg-white border-b border-[#EADBDA] px-3 sm:px-8 py-2 sm:py-3 overflow-x-auto scrollbar-none">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-1.5 sm:gap-2 min-w-[480px]">
           {[
             { num: 1, label: '1. The Person' },
             { num: 2, label: '2. The Letter & Voice' },
@@ -610,7 +777,7 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
               key={s.num}
               type="button"
               onClick={() => setActiveStep(s.num as any)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
                 activeStep === s.num
                   ? 'bg-[#8B1E3F] text-white shadow-xs'
                   : 'text-[#6E4F57] hover:bg-[#FAF7F2]'
@@ -745,6 +912,173 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
                   Keep it short (e.g. <code className="text-[#8B1E3F] font-bold">oluwa</code>) for a clean celebrant link!
                 </p>
               </div>
+            </div>
+
+            {/* SCHEDULED UNLOCKING: BIRTHDAY DATE & TIME PICKER */}
+            <div className="pt-4 border-t border-[#F0DFDE] space-y-4">
+              <div className="flex items-start justify-between gap-3 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[#FFF5F6] via-white to-[#FAF7F2] border border-[#F2D7DC]">
+                <div className="flex items-start gap-3">
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-xs transition-colors ${
+                    isScheduledUnlock ? 'bg-[#8B1E3F] text-white' : 'bg-[#FAF7F2] text-[#8C6B73] border border-[#EADBDA]'
+                  }`}>
+                    {isScheduledUnlock ? <Lock className="w-5 h-5 text-[#FFD782]" /> : <Unlock className="w-5 h-5 text-[#8C6B73]" />}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-serif font-bold text-sm sm:text-base text-[#4A1525]">
+                        Schedule Celebration Unlocking
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-[#FFF0F2] text-[#8B1E3F] text-[10px] font-bold uppercase tracking-wider border border-[#F5CDD3]">
+                        Date & Time Picker
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#6E4F57] mt-0.5">
+                      Lock this digital epistle until the celebrant's exact birthday date & time. If opened before then, they see an enchanting royal countdown lock screen!
+                    </p>
+                  </div>
+                </div>
+
+                {/* Toggle switch */}
+                <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+                  <input
+                    type="checkbox"
+                    checked={isScheduledUnlock}
+                    onChange={(e) => {
+                      const enabled = e.target.checked;
+                      setIsScheduledUnlock(enabled);
+                      if (enabled && !unlockDate) {
+                        const d = new Date();
+                        d.setDate(d.getDate() + 1);
+                        setUnlockDate(d.toISOString().slice(0, 10));
+                        setUnlockTime('00:00');
+                      }
+                    }}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-[#E5D4C5] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8B1E3F]"></div>
+                </label>
+              </div>
+
+              {/* Date & Time Controls (Visible when active) */}
+              {isScheduledUnlock && (
+                <div className="p-4 sm:p-5 rounded-2xl bg-[#FFFDFB] border border-[#EADBDA] shadow-xs space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Birthday Date Picker */}
+                    <div>
+                      <label className="block text-xs font-bold text-[#4A1525] uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-[#8B1E3F]" />
+                        <span>Unlock Birthday Date *</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={unlockDate}
+                        onChange={(e) => setUnlockDate(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#D5C2C6] bg-white text-sm font-medium focus:outline-[#8B1E3F]"
+                      />
+                    </div>
+
+                    {/* Unlock Time Picker */}
+                    <div>
+                      <label className="block text-xs font-bold text-[#4A1525] uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-[#8B1E3F]" />
+                        <span>Unlock Time (Exact Hour & Min) *</span>
+                      </label>
+                      <input
+                        type="time"
+                        value={unlockTime}
+                        onChange={(e) => setUnlockTime(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#D5C2C6] bg-white text-sm font-medium focus:outline-[#8B1E3F]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Quick Time Presets */}
+                  <div>
+                    <span className="text-[11px] font-semibold text-[#8C6B73] block mb-1.5">
+                      Quick Time Presets:
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {[
+                        { label: 'Midnight of Birthday (12:00 AM)', time: '00:00' },
+                        { label: 'Morning Surprise (08:00 AM)', time: '08:00' },
+                        { label: 'Lunchtime (12:00 PM)', time: '12:00' },
+                        { label: 'Evening Celebration (07:00 PM)', time: '19:00' },
+                      ].map((preset) => (
+                        <button
+                          key={preset.time}
+                          type="button"
+                          onClick={() => setUnlockTime(preset.time)}
+                          className={`px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer ${
+                            unlockTime === preset.time
+                              ? 'bg-[#8B1E3F] text-white font-semibold'
+                              : 'bg-[#FAF7F2] hover:bg-[#F2EAE5] text-[#4A1525] border border-[#EADBDA]'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Quick Date Presets */}
+                  <div>
+                    <span className="text-[11px] font-semibold text-[#8C6B73] block mb-1.5">
+                      Quick Date Presets:
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {[
+                        { label: 'Today', days: 0 },
+                        { label: 'Tomorrow', days: 1 },
+                        { label: 'In 3 Days', days: 3 },
+                        { label: 'In 1 Week', days: 7 },
+                        { label: 'In 2 Weeks', days: 14 },
+                        { label: 'In 1 Month', days: 30 },
+                      ].map((preset) => {
+                        const target = new Date();
+                        target.setDate(target.getDate() + preset.days);
+                        const isoStr = target.toISOString().slice(0, 10);
+                        const isMatch = unlockDate === isoStr;
+                        return (
+                          <button
+                            key={preset.label}
+                            type="button"
+                            onClick={() => setUnlockDate(isoStr)}
+                            className={`px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer ${
+                              isMatch
+                                ? 'bg-[#8B1E3F] text-white font-semibold'
+                                : 'bg-[#FAF7F2] hover:bg-[#F2EAE5] text-[#4A1525] border border-[#EADBDA]'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Real-Time Preview Badge */}
+                  {unlockDate ? (
+                    <div className="p-3.5 rounded-xl bg-[#FAF7F2] border border-[#EADBDA] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-2 text-[#4A1525]">
+                        <Lock className="w-4 h-4 text-[#8B1E3F] shrink-0" />
+                        <span>
+                          Locked under seal until: <strong>{new Date(`${unlockDate}T${unlockTime || '00:00'}:00`).toLocaleString(undefined, {
+                            dateStyle: 'full',
+                            timeStyle: 'short',
+                          })}</strong>
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-semibold text-[#8B1E3F] bg-[#FFF0F2] px-2.5 py-0.5 rounded-full border border-[#F5CDD3] self-start sm:self-auto">
+                        ⏳ Live Countdown Screen Active
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-[#A67C85] italic">
+                      Please pick a date for the birthday unlocking.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="pt-4 flex justify-end">
@@ -889,7 +1223,7 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
                 </div>
 
                 {voiceAudioUrl ? (
-                  <div className="p-4 bg-white rounded-xl border border-[#EADBDA] space-y-3">
+                  <div className="p-4 bg-white rounded-xl border border-[#EADBDA] space-y-3.5 shadow-xs">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-emerald-700 flex items-center gap-1.5">
                         <Check className="w-4 h-4 text-emerald-600" />
@@ -898,6 +1232,12 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
                       <button
                         type="button"
                         onClick={() => {
+                          if (studioVoiceAudioRef.current) {
+                            studioVoiceAudioRef.current.pause();
+                          }
+                          setIsVoicePreviewPlaying(false);
+                          setVoicePreviewProgress(0);
+                          setVoicePreviewCurrentTime(0);
                           setVoiceAudioUrl('');
                           setVoiceDuration(0);
                         }}
@@ -906,37 +1246,141 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
                         Delete & Re-record
                       </button>
                     </div>
-                    <audio controls src={voiceAudioUrl} className="w-full h-8" />
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    {isRecording ? (
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs font-mono font-bold animate-pulse">
-                          <span className="w-2.5 h-2.5 rounded-full bg-rose-600" />
-                          <span>
-                            Recording: {Math.floor(recordingSeconds / 60)}:
-                            {('0' + (recordingSeconds % 60)).slice(-2)}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleStopRecording}
-                          className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
-                        >
-                          <Square className="w-3.5 h-3.5 fill-white" />
-                          <span>Stop & Save Recording</span>
-                        </button>
-                      </div>
-                    ) : (
+
+                    {/* Hidden Audio element for studio preview */}
+                    <audio
+                      ref={studioVoiceAudioRef}
+                      src={voiceAudioUrl}
+                      onTimeUpdate={() => {
+                        const audio = studioVoiceAudioRef.current;
+                        if (audio) {
+                          setVoicePreviewCurrentTime(audio.currentTime);
+                          const dur = audio.duration || voiceDuration;
+                          if (dur > 0) {
+                            setVoicePreviewProgress((audio.currentTime / dur) * 100);
+                          }
+                        }
+                      }}
+                      onEnded={() => {
+                        setIsVoicePreviewPlaying(false);
+                        setVoicePreviewProgress(0);
+                        setVoicePreviewCurrentTime(0);
+                      }}
+                    />
+
+                    {/* Interactive Voice Waveform Bar */}
+                    <div className="flex items-center gap-3 bg-[#FAF7F2] p-3 rounded-xl border border-[#EADBDA]">
                       <button
                         type="button"
-                        onClick={handleStartRecording}
-                        className="px-4 py-2.5 bg-white border border-[#8B1E3F] text-[#8B1E3F] hover:bg-[#FFF0F2] rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-xs"
+                        onClick={() => {
+                          const audio = studioVoiceAudioRef.current;
+                          if (!audio) return;
+                          if (isVoicePreviewPlaying) {
+                            audio.pause();
+                            setIsVoicePreviewPlaying(false);
+                          } else {
+                            audio.play().then(() => {
+                              setIsVoicePreviewPlaying(true);
+                            }).catch(() => {});
+                          }
+                        }}
+                        className="w-10 h-10 rounded-full bg-[#8B1E3F] hover:bg-[#721532] text-white flex items-center justify-center shrink-0 shadow-sm cursor-pointer transition-transform active:scale-95"
+                        title={isVoicePreviewPlaying ? 'Pause' : 'Play voice note preview'}
                       >
-                        <Mic className="w-4 h-4" />
-                        <span>Start Microphone Recording</span>
+                        {isVoicePreviewPlaying ? (
+                          <Pause className="w-4 h-4 fill-white" />
+                        ) : (
+                          <Play className="w-4 h-4 fill-white ml-0.5" />
+                        )}
                       </button>
+
+                      <div className="flex-1 min-w-0">
+                        <AudioWaveformVisualizer
+                          isPlaying={isVoicePreviewPlaying}
+                          progressPercent={voicePreviewProgress}
+                          currentSeconds={voicePreviewCurrentTime}
+                          durationSeconds={voiceDuration}
+                          barCount={30}
+                          compact
+                          onSeek={(perc) => {
+                            const audio = studioVoiceAudioRef.current;
+                            if (audio) {
+                              const dur = audio.duration || voiceDuration;
+                              if (dur > 0) {
+                                const target = (perc / 100) * dur;
+                                audio.currentTime = target;
+                                setVoicePreviewCurrentTime(target);
+                                setVoicePreviewProgress(perc);
+                              }
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      {isRecording ? (
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <div className="flex items-center gap-2 px-3.5 py-2 bg-rose-50 border border-rose-300 rounded-xl text-rose-700 text-xs font-mono font-bold animate-pulse shadow-xs">
+                            <span className="w-2.5 h-2.5 rounded-full bg-rose-600 animate-ping" />
+                            <span>
+                              Recording: {Math.floor(recordingSeconds / 60)}:
+                              {('0' + (recordingSeconds % 60)).slice(-2)}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleStopRecording}
+                            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                          >
+                            <Square className="w-3.5 h-3.5 fill-white" />
+                            <span>Stop & Save Recording</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleStartRecording}
+                            disabled={isRequestingMic}
+                            className="px-4 py-2.5 bg-gradient-to-r from-[#8B1E3F] to-[#A82A4D] hover:opacity-95 text-white rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                          >
+                            <Mic className={`w-4 h-4 ${isRequestingMic ? 'animate-bounce' : ''}`} />
+                            <span>{isRequestingMic ? 'Connecting to Mic...' : 'Start Microphone Recording'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => audioFileInputRef.current?.click()}
+                            className="px-3.5 py-2.5 bg-white border border-[#D5C2C6] hover:bg-[#FAF7F2] text-[#4A1525] rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                          >
+                            <Upload className="w-3.5 h-3.5 text-[#8B1E3F]" />
+                            <span>Upload Audio Note (MP3/M4A)</span>
+                          </button>
+                          <input
+                            ref={audioFileInputRef}
+                            type="file"
+                            accept="audio/*,.mp3,.m4a,.wav,.ogg,.aac"
+                            className="hidden"
+                            onChange={handleAudioFileUpload}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Microphone feedback / guidance */}
+                    {micError && (
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        <div className="space-y-1">
+                          <p className="font-medium">{micError}</p>
+                          <p className="text-[11px] text-amber-700">
+                            Tip: You can use your phone Voice Memos app, then click "Upload Audio Note" to attach it.
+                          </p>
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
@@ -1285,6 +1729,20 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
                 <span className="text-[#8C6B73]">Occasion</span>
                 <span className="font-semibold text-[#8B1E3F] capitalize">{occasion}</span>
               </div>
+              {isScheduledUnlock && unlockDate && (
+                <div className="flex items-center justify-between pb-2 border-b border-[#EADBDA]">
+                  <span className="text-[#8C6B73] flex items-center gap-1">
+                    <Lock className="w-3.5 h-3.5 text-[#8B1E3F]" />
+                    Scheduled Unlock
+                  </span>
+                  <span className="font-semibold text-[#8B1E3F] text-right">
+                    {new Date(`${unlockDate}T${unlockTime || '00:00'}:00`).toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                    })} at {unlockTime}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center justify-between pb-2 border-b border-[#EADBDA]">
                 <span className="text-[#8C6B73]">Format</span>
                 <span className="font-semibold text-[#4A1525] capitalize">{letterType}</span>
@@ -1329,14 +1787,18 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
                         Send Directly via WhatsApp
                       </h4>
                       <p className="text-xs text-[#2D6A4F]">
-                        Opens WhatsApp with a tailored note and digital envelope link for {nickname || recipientName || 'your celebrant'}.
+                        {isScheduledUnlock && unlockDate
+                          ? `Notifies ${nickname || recipientName || 'your celebrant'} that their delivery is sealed and unlocks on ${unlockDate}!`
+                          : `Opens WhatsApp with a tailored note and digital envelope link for ${nickname || recipientName || 'your celebrant'}.`}
                       </p>
                     </div>
                   </div>
 
                   <a
                     href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
-                      `❤️ Dear ${nickname || recipientName || 'celebrant'}, a special celebration moment & personalized epistle has been created for you on Eyan Mi! ✨ Tap to open your envelope:\n${activeShareLink}`
+                      isScheduledUnlock && unlockDate
+                        ? `❤️ Dear ${nickname || recipientName || 'celebrant'}, a special celebration moment & personalized epistle has been created for you on Eyan Mi! ✨ It is under royal seal and unlocks on ${new Date(`${unlockDate}T${unlockTime || '00:00'}:00`).toLocaleDateString(undefined, { dateStyle: 'full' })} at ${unlockTime}. Tap to view your live countdown:\n${activeShareLink}`
+                        : `❤️ Dear ${nickname || recipientName || 'celebrant'}, a special celebration moment & personalized epistle has been created for you on Eyan Mi! ✨ Tap to open your envelope:\n${activeShareLink}`
                     )}`}
                     target="_blank"
                     rel="noreferrer"
@@ -1349,14 +1811,18 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
 
                 <div className="p-3 rounded-xl bg-white/80 border border-emerald-100 text-[11px] text-[#2D6A4F] flex items-center justify-between gap-2">
                   <span className="truncate italic">
-                    "❤️ Dear {nickname || recipientName || 'celebrant'}, a special celebration moment & personalized epistle has been created for you..."
+                    {isScheduledUnlock && unlockDate
+                      ? `"❤️ Dear ${nickname || recipientName || 'celebrant'}, a special celebration moment has been created for you on Eyan Mi! It unlocks on ${unlockDate}..."`
+                      : `"❤️ Dear ${nickname || recipientName || 'celebrant'}, a special celebration moment & personalized epistle has been created for you..."`}
                   </span>
                   <button
                     type="button"
                     onClick={() =>
                       handleCopyFormattedLink(
                         'message',
-                        `❤️ Dear ${nickname || recipientName || 'celebrant'}, a special celebration moment & personalized epistle has been created for you on Eyan Mi! ✨ Tap to open your envelope:\n${activeShareLink}`
+                        isScheduledUnlock && unlockDate
+                          ? `❤️ Dear ${nickname || recipientName || 'celebrant'}, a special celebration moment & personalized epistle has been created for you on Eyan Mi! ✨ It is under royal seal and unlocks on ${new Date(`${unlockDate}T${unlockTime || '00:00'}:00`).toLocaleDateString(undefined, { dateStyle: 'full' })} at ${unlockTime}. Tap to view your live countdown:\n${activeShareLink}`
+                          : `❤️ Dear ${nickname || recipientName || 'celebrant'}, a special celebration moment & personalized epistle has been created for you on Eyan Mi! ✨ Tap to open your envelope:\n${activeShareLink}`
                       )
                     }
                     className="shrink-0 text-emerald-800 font-bold hover:underline flex items-center gap-1 cursor-pointer"
@@ -1435,15 +1901,25 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
             </div>
 
             {/* Actions */}
-            <div className="pt-2 flex flex-col sm:flex-row items-center gap-3">
+            <div className="pt-2 flex flex-col sm:flex-row flex-wrap items-center gap-3">
               <button
                 type="button"
                 onClick={handleTestViewAsCelebrant}
-                className="w-full sm:w-auto px-6 py-2.5 rounded-xl border-2 border-[#8B1E3F] bg-white hover:bg-[#FFF0F2] text-[#8B1E3F] text-xs font-bold flex items-center justify-center gap-2 cursor-pointer shadow-xs transition-all"
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl border-2 border-[#8B1E3F] bg-white hover:bg-[#FFF0F2] text-[#8B1E3F] text-xs font-bold flex items-center justify-center gap-2 cursor-pointer shadow-xs transition-all"
                 title="Preview the exact birthday letter you are working on"
               >
                 <Eye className="w-4 h-4 text-[#8B1E3F]" />
-                <span>Test View as Celebrant (Preview Draft)</span>
+                <span>Test View as Celebrant</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowKeepsakeModal(true)}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-[#D5C2C6] bg-white hover:bg-[#FAF7F2] text-[#4A1525] text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer shadow-xs transition-all"
+                title="Export or print the birthday epistle as a high-quality PDF keepsake"
+              >
+                <Printer className="w-4 h-4 text-[#8B1E3F]" />
+                <span>Export / Print PDF Keepsake</span>
               </button>
 
               <button
@@ -1683,6 +2159,14 @@ export const CelebrationStudio: React.FC<CelebrationStudioProps> = ({
           </div>
         </div>
       )}
+
+      {/* Eyan Mi Keepsake Export Modal */}
+      <KeepsakeExportModal
+        isOpen={showKeepsakeModal}
+        onClose={() => setShowKeepsakeModal(false)}
+        celebration={getDraftCelebration()}
+        deliveryUrl={cleanShareLink}
+      />
     </div>
   );
 };

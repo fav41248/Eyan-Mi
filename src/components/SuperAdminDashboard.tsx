@@ -40,8 +40,9 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const loadData = async () => {
     setLoading(true);
     try {
+      const adminEmail = user?.email || userProfile?.email;
       const [usersList, celebrationsList] = await Promise.all([
-        celebrationService.getAllUsers(),
+        celebrationService.getAllUsers(adminEmail),
         celebrationService.getAllCelebrations(),
       ]);
       setUsers(usersList);
@@ -69,7 +70,10 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       return;
     }
     try {
-      await celebrationService.deleteCelebration(id);
+      await celebrationService.deleteCelebration(id, {
+        userId: user?.uid || userProfile?.uid,
+        userEmail: user?.email || userProfile?.email,
+      });
       setCelebrations((prev) => prev.filter((c) => c.id !== id));
     } catch (err) {
       console.error('Delete failed:', err);
@@ -102,43 +106,45 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-[#241318] flex flex-col font-sans">
       {/* Top Navbar */}
-      <header className="bg-white/95 backdrop-blur-md border-b border-[#EADBDA] px-4 sm:px-8 py-3.5 sticky top-0 z-30 flex items-center justify-between shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#8B1E3F] to-[#D4AF37] flex items-center justify-center text-white shadow-xs">
-            <Shield className="w-5 h-5" />
+      <header className="bg-white/95 backdrop-blur-md border-b border-[#EADBDA] px-3.5 sm:px-8 py-3 sm:py-3.5 sticky top-0 z-30 flex items-center justify-between shadow-xs">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-[#8B1E3F] to-[#D4AF37] flex items-center justify-center text-white shadow-xs shrink-0">
+            <Shield className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="font-serif text-lg font-bold text-[#4A1525]">
-                Eyan mi · Platform Admin Command
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <h1 className="font-serif text-base sm:text-lg font-bold text-[#4A1525] truncate">
+                <span className="hidden sm:inline">Eyan mi · </span>Admin
               </h1>
-              <span className="px-2 py-0.5 rounded-full bg-[#FFF0F2] text-[#8B1E3F] text-[10px] font-bold uppercase tracking-wider border border-[#F5CDD3]">
+              <span className="px-2 py-0.5 rounded-full bg-[#FFF0F2] text-[#8B1E3F] text-[10px] font-bold uppercase tracking-wider border border-[#F5CDD3] shrink-0">
                 Super Admin
               </span>
             </div>
-            <p className="text-xs text-[#8C6B73]">
-              Manage registered accounts, platform celebrations, and metrics
+            <p className="text-[11px] sm:text-xs text-[#8C6B73] truncate">
+              Manage accounts, celebrations, and metrics
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           <button
             type="button"
             onClick={loadData}
             disabled={loading}
-            className="p-2 rounded-xl border border-[#EADBDA] bg-white text-[#6E4F57] hover:bg-[#FAF7F2] transition-colors cursor-pointer"
+            className="p-1.5 sm:p-2 rounded-xl border border-[#EADBDA] bg-white text-[#6E4F57] hover:bg-[#FAF7F2] transition-colors cursor-pointer"
             title="Refresh data"
+            aria-label="Refresh data"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
           <button
             type="button"
             onClick={onBackToApp}
-            className="px-3.5 py-2 rounded-xl bg-[#8B1E3F] text-white text-xs font-semibold hover:bg-[#721532] transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+            className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-[#8B1E3F] text-white text-xs font-semibold hover:bg-[#721532] transition-colors flex items-center gap-1 cursor-pointer shadow-xs"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Return to App</span>
+            <span className="hidden sm:inline">Return to App</span>
+            <span className="sm:hidden">Exit</span>
           </button>
         </div>
       </header>

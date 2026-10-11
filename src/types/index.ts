@@ -75,6 +75,10 @@ export interface CelebrationConfig {
   viewsCount?: number;
   createdAt?: string;
   updatedAt?: string;
+  // Scheduled Unlocking for Birthday Date & Time
+  isScheduledUnlock?: boolean;
+  unlockAt?: string;             // ISO date-time string e.g. "2026-10-15T00:00"
+  unlockTimezone?: string;       // User timezone e.g. "Africa/Lagos", "America/New_York", etc.
   // Legacy fields kept for compatibility
   audioNarrationUrl?: string;
   audioTitle?: string;
