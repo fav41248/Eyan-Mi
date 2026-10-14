@@ -21,6 +21,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   if (!isOpen) return null;
@@ -28,6 +29,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccessMessage('');
     setSubmitting(true);
 
     try {
@@ -36,14 +38,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           throw new Error('Please enter your name');
         }
         await signupWithEmail(email, password, name);
+        setSuccessMessage('🎉 Account successfully created! Welcome to Eyan mi.');
       } else {
         await loginWithEmail(email, password);
+        setSuccessMessage('✨ Successfully signed in! Welcome back.');
       }
-      onSuccess?.();
-      onClose();
+      
+      setTimeout(() => {
+        onSuccess?.();
+        onClose();
+        setSuccessMessage('');
+      }, 1400);
     } catch (err: any) {
       setError(err.message || 'Authentication failed. Please check your credentials.');
-    } finally {
       setSubmitting(false);
     }
   };
@@ -88,6 +95,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               : 'Log in to manage your celebrations and view your special moments'}
           </p>
         </div>
+
+        {successMessage && (
+          <div className="mb-4 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm font-semibold flex items-center gap-2 animate-fade-in shadow-sm">
+            <span className="text-base">🎉</span>
+            <div>{successMessage}</div>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex flex-col gap-2 animate-shake">
