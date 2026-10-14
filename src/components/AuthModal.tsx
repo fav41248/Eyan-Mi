@@ -193,10 +193,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-3 px-4 rounded-xl bg-[#8B1E3F] hover:bg-[#721532] text-white text-xs font-semibold shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer mt-2 disabled:opacity-50"
+            className="w-full py-3 px-4 rounded-xl bg-[#8B1E3F] hover:bg-[#721532] text-white text-xs font-semibold shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer mt-2 disabled:opacity-70"
           >
-            <span>{mode === 'signup' ? 'Create Free Account' : 'Sign In to Eyan mi'}</span>
-            <ArrowRight className="w-3.5 h-3.5" />
+            {submitting ? (
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>{mode === 'signup' ? 'Creating Account...' : 'Signing In...'}</span>
+              </div>
+            ) : (
+              <>
+                <span>{mode === 'signup' ? 'Create Free Account' : 'Sign In to Eyan mi'}</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </>
+            )}
           </button>
         </form>
 
