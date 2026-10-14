@@ -1,7 +1,13 @@
 import { initializeApp } from 'firebase/app';
 import { initializeFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
-import rawConfig from '../../firebase-applet-config.json';
+import defaultConfig from '../../firebase-applet-config.example.json';
+
+// Use import.meta.glob for optional JSON import without build crashes if file is absent
+const configModules: Record<string, any> = import.meta.glob('../../firebase-applet-config.json', {
+  eager: true,
+});
+const rawConfig = configModules['../../firebase-applet-config.json']?.default || defaultConfig;
 
 // Allow overriding via environment variables in CI/CD, Netlify, or Vercel
 const firebaseConfig = {

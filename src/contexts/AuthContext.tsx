@@ -2,8 +2,6 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   User,
   onAuthStateChanged,
-  signInWithPopup,
-  GoogleAuthProvider,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,
@@ -17,7 +15,6 @@ interface AuthContextType {
   userProfile: UserProfile | null;
   loading: boolean;
   isAdmin: boolean;
-  loginWithGoogle: () => Promise<void>;
   loginWithEmail: (email: string, pass: string) => Promise<void>;
   signupWithEmail: (email: string, pass: string, name: string) => Promise<void>;
   loginAsGuest: (name?: string) => Promise<void>;
@@ -28,6 +25,29 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const ADMIN_EMAIL = 'ayojire1@gmail.com';
+
+// Safe fetch helper that never throws DOMException / SyntaxError on non-JSON HTML error responses
+async function safeFetchJson(url: string, options?: RequestInit): Promise<{ ok: boolean; status: number; data: any }> {
+  try {
+    const res = await fetch(url, options);
+    const text = await res.text();
+    let data: any = {};
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { error: 'server-response-error', message: res.ok ? 'Unexpected response' : 'Server is temporarily unavailable. Please try again.' };
+      }
+    }
+    return { ok: res.ok, status: res.status, data };
+  } catch (err: any) {
+    return {
+      ok: false,
+      status: 0,
+      data: { error: 'network-error', message: err?.message || 'Connection error. Please check your network and try again.' },
+    };
+  }
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -40,7 +60,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const email = u.email || 'guest@eyanmi.com';
       const role = email.toLowerCase() === ADMIN_EMAIL.toLowerCase() ? 'admin' : 'user';
 
-      const res = await fetch('/api/user/sync', {
+      const { ok, data } = await safeFetchJson('/api/user/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -52,8 +72,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
+      if (ok && data?.user) {
         setUserProfile(data.user);
       } else {
         // Fallback local profile
@@ -122,38 +141,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  const loginWithGoogle = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
-      const result = await signInWithPopup(auth, provider);
-      await syncUserToBackend(result.user);
-    } catch (err: any) {
-      console.warn('Google Sign-In notice:', err?.code, err?.message);
-      const code = err?.code || '';
-      const msg = err?.message || '';
-
-      if (code === 'auth/popup-blocked') {
-        throw new Error('Sign-in popup was blocked by your browser. Please allow popups for this site, or sign in using your email.');
-      }
-      if (code === 'auth/popup-closed-by-user') {
-        throw new Error('Google sign-in was cancelled before completion. Please try again.');
-      }
-      if (
-        code === 'auth/operation-not-allowed' ||
-        msg.includes('operation-not-allowed') ||
-        code === 'auth/configuration-not-found'
-      ) {
-        throw new Error('Google Sign-in is not yet enabled in the Firebase Console. You can immediately create an account or sign in with your Email & Password below!');
-      }
-      if (code === 'auth/unauthorized-domain' || msg.includes('unauthorized-domain')) {
-        throw new Error('This domain is not authorized in Firebase Console yet. Please sign in with Email & Password or use Guest Mode!');
-      }
-
-      throw new Error(msg || 'Google sign-in could not be completed. Please try again or use email sign-in.');
-    }
-  };
-
   const loginWithEmail = async (email: string, pass: string) => {
     const cleanEmail = email.trim().toLowerCase();
 
@@ -163,44 +150,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await syncUserToBackend(cred.user);
       return;
     } catch (firebaseErr: any) {
-      console.warn('Firebase client login error, trying backend store:', firebaseErr?.code, firebaseErr?.message);
+      console.warn('Firebase client login note, checking backend authentication store:', firebaseErr?.code);
       const errCode = firebaseErr?.code || '';
       const errMsg = firebaseErr?.message || '';
 
       // Fallback to backend authentication route
-      try {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: cleanEmail, password: pass }),
-        });
-        const data = await res.json();
-        if (res.ok && data.user) {
-          setUserProfile(data.user);
-          localStorage.setItem('eyanmi_auth_user', JSON.stringify(data.user));
-          return;
-        }
+      const { ok, data } = await safeFetchJson('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, password: pass }),
+      });
 
-        if (data?.error === 'invalid-password') {
-          throw new Error('Incorrect password. Please try again.');
-        }
-        if (data?.error === 'user-not-found') {
-          throw new Error('No account found with this email. Please check your email or click Create Account.');
-        }
-        if (data?.message) {
-          throw new Error(data.message);
-        }
-      } catch (backendErr: any) {
-        if (backendErr.message && !backendErr.message.includes('fetch')) {
-          throw backendErr;
-        }
+      if (ok && data?.user) {
+        setUserProfile(data.user);
+        localStorage.setItem('eyanmi_auth_user', JSON.stringify(data.user));
+        return;
+      }
+
+      if (data?.error === 'invalid-password') {
+        throw new Error('Incorrect password. Please try again.');
+      }
+      if (data?.error === 'user-not-found') {
+        throw new Error('No account found with this email. Please check your email or click Create Free Account.');
+      }
+      if (data?.message) {
+        throw new Error(data.message);
       }
 
       if (errCode === 'auth/wrong-password' || errMsg.includes('wrong-password') || errCode === 'auth/invalid-credential') {
         throw new Error('Incorrect password. Please try again.');
       }
       if (errCode === 'auth/user-not-found' || errMsg.includes('user-not-found')) {
-        throw new Error('No account found with this email. Please click Create Account.');
+        throw new Error('No account found with this email. Please click Create Free Account.');
       }
 
       throw new Error(errMsg || 'Sign-in failed. Please verify your email and password.');
@@ -227,7 +208,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await syncUserToBackend({ ...cred.user, displayName: cleanName });
       return;
     } catch (firebaseErr: any) {
-      console.warn('Firebase client signup error, trying backend register/login:', firebaseErr?.code, firebaseErr?.message);
+      console.warn('Firebase client signup note, checking registration store:', firebaseErr?.code);
       const errCode = firebaseErr?.code || '';
       const errMsg = firebaseErr?.message || '';
 
@@ -239,44 +220,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         } catch {
           // Check backend login
-          try {
-            const res = await fetch('/api/auth/login', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email: cleanEmail, password: pass }),
-            });
-            const data = await res.json();
-            if (res.ok && data.user) {
-              setUserProfile(data.user);
-              localStorage.setItem('eyanmi_auth_user', JSON.stringify(data.user));
-              return;
-            }
-          } catch {}
+          const { ok, data } = await safeFetchJson('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: cleanEmail, password: pass }),
+          });
+          if (ok && data?.user) {
+            setUserProfile(data.user);
+            localStorage.setItem('eyanmi_auth_user', JSON.stringify(data.user));
+            return;
+          }
 
           throw new Error('This email is already registered. Please switch to Sign In with your password.');
         }
       }
 
       // Fallback to server registration endpoint
-      try {
-        const res = await fetch('/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: cleanEmail, password: pass, displayName: cleanName }),
-        });
-        const data = await res.json();
-        if (res.ok && data.user) {
-          setUserProfile(data.user);
-          localStorage.setItem('eyanmi_auth_user', JSON.stringify(data.user));
-          return;
-        }
-        if (data?.message) {
-          throw new Error(data.message);
-        }
-      } catch (regErr: any) {
-        if (regErr.message && !regErr.message.includes('fetch')) {
-          throw regErr;
-        }
+      const { ok, data } = await safeFetchJson('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, password: pass, displayName: cleanName }),
+      });
+
+      if (ok && data?.user) {
+        setUserProfile(data.user);
+        localStorage.setItem('eyanmi_auth_user', JSON.stringify(data.user));
+        return;
+      }
+
+      if (data?.error === 'email-already-in-use' || data?.message?.includes('already registered')) {
+        throw new Error('This email is already registered. Please switch to Sign In with your password.');
+      }
+      if (data?.message) {
+        throw new Error(data.message);
       }
 
       if (errCode === 'auth/weak-password' || errMsg.includes('weak-password')) {
@@ -286,7 +262,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Please enter a valid email address.');
       }
 
-      throw new Error(errMsg || 'Sign-up failed. Please try again.');
+      throw new Error(errMsg || 'Sign-up could not be completed. Please try again.');
     }
   };
 
@@ -340,7 +316,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         userProfile,
         loading,
         isAdmin,
-        loginWithGoogle,
         loginWithEmail,
         signupWithEmail,
         loginAsGuest,

@@ -2,7 +2,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import { initializeApp } from 'firebase/app';
 import {
-  getFirestore,
+  initializeFirestore,
   doc,
   getDoc,
   setDoc,
@@ -13,10 +13,10 @@ import {
   where,
 } from 'firebase/firestore';
 import { GoogleGenAI } from '@google/genai';
-import rawFirebaseConfig from './firebase-applet-config.json' with { type: 'json' };
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,6 +24,20 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Safely load Firebase configuration from file or fallback (prevents crash if file is deleted)
+let rawFirebaseConfig: any = {};
+try {
+  const configPath = path.resolve(__dirname, 'firebase-applet-config.json');
+  const examplePath = path.resolve(__dirname, 'firebase-applet-config.example.json');
+  if (fs.existsSync(configPath)) {
+    rawFirebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+  } else if (fs.existsSync(examplePath)) {
+    rawFirebaseConfig = JSON.parse(fs.readFileSync(examplePath, 'utf-8'));
+  }
+} catch (err) {
+  console.warn('Fallback: reading firebase config file:', err);
+}
 
 // Merge environment variable overrides if provided (prevents committing secrets)
 const firebaseConfig = {
@@ -36,11 +50,15 @@ const firebaseConfig = {
   storageBucket: process.env.FIREBASE_STORAGE_BUCKET || rawFirebaseConfig.storageBucket,
 };
 
-// Initialize Cloud Firestore on backend server
+// Initialize Cloud Firestore on backend server with long polling to prevent hanging connections
 const fbApp = initializeApp(firebaseConfig, 'backend-server-fb');
-const db = firebaseConfig.firestoreDatabaseId
-  ? getFirestore(fbApp, firebaseConfig.firestoreDatabaseId)
-  : getFirestore(fbApp);
+const db = initializeFirestore(
+  fbApp,
+  {
+    experimentalForceLongPolling: true,
+  },
+  firebaseConfig.firestoreDatabaseId || undefined
+);
 
 // Initialize Gemini SDK with User-Agent header
 const ai = new GoogleGenAI({
