@@ -144,47 +144,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loginWithEmail = async (email: string, pass: string) => {
     const cleanEmail = email.trim().toLowerCase();
 
-    // 1. Try Firebase Auth client first
+    // 1. Try backend authentication route first (robust, bypasses client auth console settings)
+    const { ok, data } = await safeFetchJson('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail, password: pass }),
+    });
+
+    if (ok && data?.user) {
+      setUserProfile(data.user);
+      localStorage.setItem('eyanmi_auth_user', JSON.stringify(data.user));
+      // Also try background Firebase client auth signin if possible
+      try {
+        await signInWithEmailAndPassword(auth, cleanEmail, pass);
+      } catch {}
+      return;
+    }
+
+    if (data?.error === 'invalid-password') {
+      throw new Error('Incorrect password. Please try again.');
+    }
+    if (data?.error === 'user-not-found') {
+      throw new Error('No account found with this email. Please check your email or click Create Free Account.');
+    }
+    if (data?.message) {
+      throw new Error(data.message);
+    }
+
+    // 2. Fallback to Firebase client auth
     try {
       const cred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
       await syncUserToBackend(cred.user);
       return;
     } catch (firebaseErr: any) {
-      console.warn('Firebase client login note, checking backend authentication store:', firebaseErr?.code);
-      const errCode = firebaseErr?.code || '';
       const errMsg = firebaseErr?.message || '';
-
-      // Fallback to backend authentication route
-      const { ok, data } = await safeFetchJson('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail, password: pass }),
-      });
-
-      if (ok && data?.user) {
-        setUserProfile(data.user);
-        localStorage.setItem('eyanmi_auth_user', JSON.stringify(data.user));
-        return;
-      }
-
-      if (data?.error === 'invalid-password') {
+      if (errMsg.includes('wrong-password') || errMsg.includes('invalid-credential')) {
         throw new Error('Incorrect password. Please try again.');
       }
-      if (data?.error === 'user-not-found') {
-        throw new Error('No account found with this email. Please check your email or click Create Free Account.');
-      }
-      if (data?.message) {
-        throw new Error(data.message);
-      }
-
-      if (errCode === 'auth/wrong-password' || errMsg.includes('wrong-password') || errCode === 'auth/invalid-credential') {
-        throw new Error('Incorrect password. Please try again.');
-      }
-      if (errCode === 'auth/user-not-found' || errMsg.includes('user-not-found')) {
+      if (errMsg.includes('user-not-found')) {
         throw new Error('No account found with this email. Please click Create Free Account.');
       }
-
-      throw new Error(errMsg || 'Sign-in failed. Please verify your email and password.');
+      throw new Error(data?.message || errMsg || 'Sign-in failed. Please verify your email and password.');
     }
   };
 
@@ -199,7 +199,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error('Password must be at least 6 characters long.');
     }
 
-    // 1. Try Firebase Auth first
+    // 1. Try backend registration endpoint first (robust, bypasses client auth console settings)
+    const { ok, data } = await safeFetchJson('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail, password: pass, displayName: cleanName }),
+    });
+
+    if (ok && data?.user) {
+      setUserProfile(data.user);
+      localStorage.setItem('eyanmi_auth_user', JSON.stringify(data.user));
+      // Also try background Firebase client registration if possible
+      try {
+        const cred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
+        if (auth.currentUser) {
+          await updateProfile(auth.currentUser, { displayName: cleanName });
+        }
+      } catch {}
+      return;
+    }
+
+    if (data?.error === 'email-already-in-use' || data?.message?.includes('already registered')) {
+      throw new Error('This email is already registered. Please switch to Sign In with your password.');
+    }
+    if (data?.message) {
+      throw new Error(data.message);
+    }
+
+    // 2. Fallback to Firebase client signup
     try {
       const cred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
       if (auth.currentUser) {
@@ -208,61 +235,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await syncUserToBackend({ ...cred.user, displayName: cleanName });
       return;
     } catch (firebaseErr: any) {
-      console.warn('Firebase client signup note, checking registration store:', firebaseErr?.code);
-      const errCode = firebaseErr?.code || '';
       const errMsg = firebaseErr?.message || '';
-
-      // If email is already in use, attempt automatic sign-in with the provided password!
-      if (errCode === 'auth/email-already-in-use' || errMsg.includes('email-already-in-use')) {
-        try {
-          const cred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
-          await syncUserToBackend(cred.user);
-          return;
-        } catch {
-          // Check backend login
-          const { ok, data } = await safeFetchJson('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: cleanEmail, password: pass }),
-          });
-          if (ok && data?.user) {
-            setUserProfile(data.user);
-            localStorage.setItem('eyanmi_auth_user', JSON.stringify(data.user));
-            return;
-          }
-
-          throw new Error('This email is already registered. Please switch to Sign In with your password.');
-        }
-      }
-
-      // Fallback to server registration endpoint
-      const { ok, data } = await safeFetchJson('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail, password: pass, displayName: cleanName }),
-      });
-
-      if (ok && data?.user) {
-        setUserProfile(data.user);
-        localStorage.setItem('eyanmi_auth_user', JSON.stringify(data.user));
-        return;
-      }
-
-      if (data?.error === 'email-already-in-use' || data?.message?.includes('already registered')) {
+      if (errMsg.includes('email-already-in-use')) {
         throw new Error('This email is already registered. Please switch to Sign In with your password.');
       }
-      if (data?.message) {
-        throw new Error(data.message);
-      }
-
-      if (errCode === 'auth/weak-password' || errMsg.includes('weak-password')) {
+      if (errMsg.includes('weak-password')) {
         throw new Error('Password must be at least 6 characters long.');
       }
-      if (errCode === 'auth/invalid-email' || errMsg.includes('invalid-email')) {
+      if (errMsg.includes('invalid-email')) {
         throw new Error('Please enter a valid email address.');
       }
-
-      throw new Error(errMsg || 'Sign-up could not be completed. Please try again.');
+      throw new Error(data?.message || errMsg || 'Sign-up could not be completed. Please try again.');
     }
   };
 
